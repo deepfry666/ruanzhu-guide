@@ -149,6 +149,8 @@ final class AppModel {
     var devNameListText: String?
     /// 开发自检：对当前选中的项目执行「更新代码材料」（keep / balance）
     var devCodeBatch: String?
+    /// 开发自检：清理空间页的验证指令（select:… / run / rescan，只在试用版生效）
+    var devCleanup: String?
 
     private var debounced: [String: Task<Void, Never>] = [:]
     private var batchNotified = false

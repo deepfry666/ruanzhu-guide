@@ -4,8 +4,8 @@ import SwiftUI
 
 /// 开发自检：设置 MS_DEV_CONTROL=<文件> 时，App 每 0.4 秒读一次这个文件，按里面的指令切换页面，
 /// 配合截图脚本逐页检查界面（和 Electron 版的 MS_AUTOMATION 一样，只在开发时用）。
-/// 指令一行一个：section=projects、modelsTab=llm、settingsTab=pdf、open=<项目路径>、projectTab=screens、
-/// feedback=open|close、newMode=batch、migrate=import|skip、appearance=dark|light、size=1440x920、select=<路径>|none、back、hold=1|0、close
+/// 指令一行一个：section=projects、modelsTab=llm、settingsTab=pdf|cleanup、open=<项目路径>、projectTab=screens、
+/// feedback=open|close、newMode=batch、migrate=import|skip、appearance=dark|light、size=1440x920、select=<路径>|none、back、hold=1|0、cleanup=select:tier1|select:tier2|select:all|select:none|rescan|run（只在试用版生效）、close
 @MainActor
 final class DevControl {
     static let shared = DevControl()
@@ -89,6 +89,7 @@ final class DevControl {
             NSApp.windows.first { $0.isVisible && $0.canBecomeMain }?.miniaturize(nil)
         case "close":
             NSApp.windows.first { $0.isVisible && $0.canBecomeMain }?.performClose(nil)
+        case "cleanup": model.devCleanup = value + "#" + String(Date().timeIntervalSince1970)
         case "codebatch": model.devCodeBatch = value + "#" + String(Date().timeIntervalSince1970)
         case "namelist": model.devNameListText = value.replacingOccurrences(of: "|", with: "\n")
         case "query": model.listQuery = value

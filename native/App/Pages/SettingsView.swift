@@ -12,6 +12,7 @@ struct SettingsView: View {
             case "pdf": PageScroll(maxWidth: 1000) { PdfSettings() }
             case "txt": PageScroll(maxWidth: 1000) { TxtSettings() }
             case "import": ImportPanel()
+            case "cleanup": PageScroll(maxWidth: 1000) { CleanupSettings() }
             default: PageScroll(maxWidth: 1000) { GeneralSettings() }
             }
         }
@@ -24,6 +25,7 @@ struct SettingsView: View {
                     Text("PDF 与字体").tag("pdf")
                     Text("TXT").tag("txt")
                     Text("导入历史项目").tag("import")
+                    Text("清理空间").tag("cleanup")
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
