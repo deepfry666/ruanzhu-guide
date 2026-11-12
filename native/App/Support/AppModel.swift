@@ -255,7 +255,9 @@ final class AppModel {
         guard let rows = try? await core.listProjects() else { return }
         // 每行的时间解析放到后台做好，界面线程只换一下数据；内容没变就不动，免得整张表重画
         let built = await Task.detached(priority: .userInitiated) { rows.map(ProjectRow.init(json:)) }.value
+        let replacing = ListPerformance.now
         if built != projects { projects = built }
+        ListPerformance.report("replace", milliseconds: ListPerformance.now - replacing)
         projectsLoaded = true
     }
 

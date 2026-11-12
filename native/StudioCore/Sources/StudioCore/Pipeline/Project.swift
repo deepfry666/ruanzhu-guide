@@ -71,6 +71,7 @@ public func projectKey(_ dir: String) -> String {
 public final class ProjectStore: @unchecked Sendable {
     public let dataDir: String
     public let stagingRoot: String
+    private let stateCache = ProjectStateCache()
     private let queues = Locked<[String: SerialQueue]>([:])
 
     public init(dataDir: String) {
@@ -90,7 +91,7 @@ public final class ProjectStore: @unchecked Sendable {
     public func stateFile(_ dir: String) -> String { Path.join(dataDir, "projects", "\(projectKey(dir)).json") }
 
     public func read(_ dir: String) throws -> JSON? {
-        guard var state = try FS.readJSON(stateFile(dir)) else { return nil }
+        guard var state = try stateCache.read(stateFile(dir))?.raw else { return nil }
         for step in PIPELINE_STEPS where state["steps"]?[step] == nil {
             if state["steps"] == nil { state["steps"] = .emptyObject }
             state["steps"]?[step] = ["status": "pending"]
@@ -106,7 +107,7 @@ public final class ProjectStore: @unchecked Sendable {
         var next = state
         next["dir"] = .string(dir)
         let snapshot = next
-        try await queue(dir).run { try FS.writeJSONAtomic(file, snapshot) }
+        try await queue(dir).run { [self] in try stateCache.write(file, ProjectState(snapshot)) }
     }
 
     /// 读出当前状态 → 修改 → 写回（同一个项目排队执行）。
@@ -117,22 +118,22 @@ public final class ProjectStore: @unchecked Sendable {
             guard var state = try self.read(dir) else { throw StudioError("项目状态不存在：\(dir)") }
             try mutate(&state)
             state["dir"] = .string(dir)
-            try FS.writeJSONAtomic(file, state)
+            try stateCache.write(file, ProjectState(state))
             return state
         }
     }
 
     public func remove(_ dir: String) async {
         let file = stateFile(dir)
-        _ = try? await queue(dir).run { FS.remove(file) }
+        _ = try? await queue(dir).run { [self] in stateCache.remove(file) }
     }
 
     /// 项目文件夹改名后，把状态搬到新路径名下。
     public func move(_ fromDir: String, _ toDir: String) throws {
         guard var state = try read(fromDir) else { return }
         state["dir"] = .string(toDir)
-        try FS.writeJSONAtomic(stateFile(toDir), state)
-        FS.remove(stateFile(fromDir))
+        try stateCache.write(stateFile(toDir), ProjectState(state))
+        stateCache.remove(stateFile(fromDir))
     }
 }
 

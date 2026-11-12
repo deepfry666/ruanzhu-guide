@@ -122,6 +122,8 @@ public final class StudioCore: @unchecked Sendable {
     func summarize(_ entry: JSON, _ settings: Settings, _ queueByDir: [String: JSON]) -> JSON? {
         let dir = entry["dir"]?.jsString ?? ""
         guard let state = try? projectStore.read(dir) else { return nil }
+        let summaryStarted = ListPerformance.now
+        defer { ListPerformance.addSummary(ListPerformance.now - summaryStarted) }
         let alive = FS.exists(dir)
         let queued = queueByDir[dir]
         let live = pipeline.getProgress(dir)
@@ -324,6 +326,9 @@ public final class StudioCore: @unchecked Sendable {
     // MARK: - 项目
 
     public func listProjects() async throws -> [JSON] {
+        ListPerformance.begin()
+        let started = ListPerformance.now
+        defer { ListPerformance.finish(since: started) }
         let index = readIndex()
         let settings = try await settingsStore.get()
         let queueByDir = queueIndex()

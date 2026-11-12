@@ -94,6 +94,11 @@ final class DevControl {
         case "namelist": model.devNameListText = value.replacingOccurrences(of: "|", with: "\n")
         case "query": model.listQuery = value
         case "status": model.listStatus = value
+        case "scroll": startScroll(value == "1")
+        case "reload": Task { await model.reloadProjects() }
+        case "listSnapshot":
+            guard AppModel.isTrial else { return }
+            try? FS.writeJSONAtomic(value, .array(model.projects.map(\.json)))
         case "stress": startStress(Int(value) ?? 0, model)
         case "probe": value == "stop" ? stopProbe() : startProbe(value)
         case "activate":
@@ -107,6 +112,34 @@ final class DevControl {
     // MARK: 卡顿测量（只在开发自检时用）
     // stress=<每秒几条>：模拟批量运行，不断发进度、项目、截图事件（不调用 AI、不改文件）；stress=0 停。
     // probe=<结果文件>：每 16 毫秒问一次界面线程，记下它晚了多久才回应；probe=stop 写出统计。
+
+    // scroll=1|0：试用版中以固定速度往返滚动真实表格，不改变选择或排序。
+    private var scrollTimer: Timer?
+    private var scrollDirection: CGFloat = 1
+
+    private func startScroll(_ enabled: Bool) {
+        scrollTimer?.invalidate()
+        scrollTimer = nil
+        guard AppModel.isTrial, enabled else { return }
+        scrollTimer = Timer.scheduledTimer(withTimeInterval: 1 / 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                func findTable(_ view: NSView) -> NSTableView? {
+                    if let table = view as? NSTableView { return table }
+                    return view.subviews.lazy.compactMap { findTable($0) }.first
+                }
+                guard let content = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain })?.contentView,
+                      let table = findTable(content), let scroll = table.enclosingScrollView else { return }
+                let clip = scroll.contentView
+                let limit = max(0, table.bounds.height - clip.bounds.height)
+                let next = min(limit, max(0, clip.bounds.minY + self.scrollDirection * 12))
+                if next >= limit { self.scrollDirection = -1 }
+                if next <= 0 { self.scrollDirection = 1 }
+                clip.scroll(to: NSPoint(x: clip.bounds.minX, y: next))
+                scroll.reflectScrolledClipView(clip)
+            }
+        }
+    }
 
     private var stressTimer: Timer?
     private var stressCount = 0
@@ -132,8 +165,11 @@ final class DevControl {
 
     private let probeState = Locked<(file: String, lags: [Double], timer: DispatchSourceTimer?)>(("", [], nil))
 
+    private var probeActivity: NSObjectProtocol?
+
     private func startProbe(_ file: String) {
         stopProbe()
+        probeActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "列表延迟采样")
         let timer = Self.makeProbeTimer(probeState)
         probeState.withLock { $0 = (file, [], timer) }
         timer.resume()
@@ -154,6 +190,8 @@ final class DevControl {
     }
 
     private func stopProbe() {
+        if let probeActivity { ProcessInfo.processInfo.endActivity(probeActivity) }
+        probeActivity = nil
         let (file, lags, timer) = probeState.withLock { current -> (String, [Double], DispatchSourceTimer?) in
             let snapshot = current
             current = ("", [], nil)
