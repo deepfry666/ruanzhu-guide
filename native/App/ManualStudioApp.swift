@@ -18,6 +18,8 @@ struct ManualStudioApp: App {
                 .sheet(isPresented: Bindable(updater).presented) {
                     UpdateSheet(updater: updater).environment(model)
                 }
+                // 放在最外层：弹窗也继承主色和按钮样式
+                .designSystem()
                 .task {
                     // 窗口（重新）打开了，就不再是「留在后台」
                     model.keptInBackground = false

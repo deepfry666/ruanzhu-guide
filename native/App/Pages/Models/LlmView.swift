@@ -51,7 +51,7 @@ struct LlmView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { editing = .draft() } label: { Label("添加厂商", systemImage: "plus") }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.primary)
                     .help("添加厂商")
             }
         }
@@ -133,7 +133,7 @@ struct AssignmentRow: View {
                 }
                 .frame(width: 260)
                 Spacer()
-                Button("保存") { save() }.buttonStyle(.borderedProminent)
+                Button("保存") { save() }.buttonStyle(.primary)
                 Button {
                     test()
                 } label: {
@@ -269,7 +269,7 @@ struct VendorEditor: View {
                         }
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.primary)
                 .keyboardShortcut(.defaultAction)
                 .disabled(busy)
             }

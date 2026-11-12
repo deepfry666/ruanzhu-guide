@@ -71,7 +71,7 @@ struct PromptSheet: View {
             HStack {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("保存") { onSave(text) }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                Button("保存") { onSave(text) }.buttonStyle(.primary).keyboardShortcut(.defaultAction)
             }
         }
         .padding(22)

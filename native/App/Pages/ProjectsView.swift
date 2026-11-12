@@ -165,7 +165,7 @@ struct ProjectsView: View {
                 QueueBar()
                 if let only = model.listOnly {
                     Banner(.info, "只显示名单里的 \(only.count) 个项目", message: "状态、时间、批次筛选暂不生效。") {
-                        Button("显示全部") { model.listOnly = nil }.buttonStyle(.glass)
+                        Button("显示全部") { model.listOnly = nil }.buttonStyle(.secondary)
                     }
                 }
                 if !query.isEmpty, filtersActive, model.listOnly == nil {
@@ -468,16 +468,16 @@ struct ProjectsView: View {
             }
             Spacer(minLength: 12)
             Button("开始处理（\(count)）", systemImage: "play.fill") { start(targets) }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.primary)
             Button("导出（\(count)）…", systemImage: "square.and.arrow.up") { exportDirs = ExportRequest(dirs: targets.map(\.dir)) }
-                .buttonStyle(.glass)
+                .buttonStyle(.secondary)
             Menu {
                 actionItems(targets, primary: false)
             } label: {
                 Label("更多", systemImage: "ellipsis")
             }
             .menuStyle(.button)
-            .buttonStyle(.glass)
+            .buttonStyle(.secondary)
             .fixedSize()
             Divider().frame(height: 20)
             Button("全选当前列表（\(rows.count)）") {
@@ -596,7 +596,7 @@ struct ProjectsView: View {
                             model.listBatch = "all"
                             datePickerOpen = false
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.primary)
                         .keyboardShortcut(.defaultAction)
                     }
                 }
@@ -758,10 +758,10 @@ struct QueueBar: View {
                 Spacer()
                 if model.batchPaused {
                     Button("继续", systemImage: "play.fill") { Task { await model.core?.batch.resume() } }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.primary)
                 } else if unfinished > 0 {
                     Button("暂停全部", systemImage: "pause.fill") { Task { await model.core?.batch.pause() } }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.secondary)
                 }
                 Button("清除已完成的记录") { Task { await model.core?.batch.clearFinished() } }
                     .buttonStyle(.borderless)

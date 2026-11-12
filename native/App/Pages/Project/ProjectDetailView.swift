@@ -105,7 +105,7 @@ struct ProjectDetailView: View {
             }
             if data.submitted {
                 Banner(.info, "已提交，只能查看", message: "\(data.submittedAt.map { "标记于 \(formatTime($0))。" } ?? "")不能运行、改文字、改图或换模板，批量操作也会跳过它。要修改请先取消已提交。") {
-                    Button("取消已提交") { setSubmitted(false) }.buttonStyle(.glass)
+                    Button("取消已提交") { setSubmitted(false) }.buttonStyle(.secondary)
                 }
             } else if data.historyReadOnly {
                 Banner(.info, "这个历史项目只有交付包，没有文案和截图源文件，只能查看。")
@@ -119,7 +119,7 @@ struct ProjectDetailView: View {
                 let error = splitDiagnostics(lastError)
                 Banner(.error, "需要处理", message: error.text) {
                     if let path = error.path, FS.exists(path) {
-                        Button("查看诊断文件") { model.open(path) }.buttonStyle(.glass)
+                        Button("查看诊断文件") { model.open(path) }.buttonStyle(.secondary)
                     }
                 }
             }
@@ -141,10 +141,10 @@ struct ProjectDetailView: View {
                         Button("确认规划，继续") {
                             Task { await model.perform { _ = try await model.core?.pipeline.confirmPlan(dir) } }
                         }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.primary)
                     } else {
                         Button("去确认截图") { tab = .editor }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.secondary)
                     }
                 }
             }
@@ -221,7 +221,7 @@ struct ProjectDetailView: View {
                         Label("继续", systemImage: "play.fill")
                             .labelStyle(.titleAndIcon)
                     }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.primary)
                     .help("继续")
                 }
             }
@@ -307,7 +307,7 @@ struct RenameSheet: View {
                         }
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.primary)
                 .keyboardShortcut(.defaultAction)
                 .disabled(busy || value.jsTrimmed.isEmpty)
             }

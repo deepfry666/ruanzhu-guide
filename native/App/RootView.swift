@@ -29,7 +29,7 @@ struct RootView: View {
                 }
             }
         }
-        .overlay(alignment: .top) { ToastOverlay(toasts: model.toasts) }
+        .overlay(alignment: .bottom) { ToastOverlay(toasts: model.toasts) }
         .alert(model.alert?.title ?? "", isPresented: Binding(get: { model.alert != nil }, set: { if !$0 { model.alert = nil } }), presenting: model.alert) { item in
             if let actionTitle = item.actionTitle, let action = item.action {
                 Button(actionTitle) { action() }
@@ -139,7 +139,7 @@ struct PendingJobsNotice: View {
                         model.reloadPendingJobs()
                     }
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.secondary)
             }
             .padding(16)
             .frame(maxWidth: 640)

@@ -237,7 +237,7 @@ struct ImportPanel: View {
                     if let dir = Panels.chooseDirectory("选择要扫描的文件夹") { scan(dir) }
                 }
                 Button("导入 \(selection.count) 个") { importSelected() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.primary)
                     .disabled(selection.isEmpty || busy)
             }
             Table(rows ?? [], selection: $selection) {

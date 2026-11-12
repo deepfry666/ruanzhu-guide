@@ -110,7 +110,7 @@ struct CleanupSettings: View {
             Spacer()
             if running { ProgressView().controlSize(.small) }
             Button("移到废纸篓…") { confirming = true }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.primary)
                 .disabled(selected.isEmpty || running || scanning || model.trialMeasure)
         }
         .padding(.horizontal, 4)

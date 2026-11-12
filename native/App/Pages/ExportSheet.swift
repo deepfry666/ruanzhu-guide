@@ -92,7 +92,7 @@ struct ExportSheet: View {
                 } label: {
                     if busy { ProgressView().controlSize(.small) } else { Text(ready.isEmpty ? "导出" : "导出 \(exportCount) 个") }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.primary)
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canExport || busy)
             }

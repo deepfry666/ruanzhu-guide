@@ -446,10 +446,11 @@ final class AppModel {
 
     func toast(_ kind: Toast.Kind, _ text: String) {
         let item = Toast(kind: kind, text: text)
-        withAnimation(.snappy) { toasts.append(item) }
+        // 进出场的弹性、减速曲线由 ToastOverlay 的过渡自带；这里只给其余提示让位的淡入淡出
+        withAnimation(Motion.fade) { toasts.append(item) }
         Task {
-            try? await Task.sleep(for: .seconds(kind == .error ? 6 : 3.5))
-            withAnimation(.snappy) { toasts.removeAll { $0.id == item.id } }
+            try? await Task.sleep(for: .seconds(kind.dwell))
+            withAnimation(Motion.fade) { toasts.removeAll { $0.id == item.id } }
         }
     }
 

@@ -19,11 +19,11 @@ struct PlanTab: View {
                         Button("确认规划，开始生图") {
                             Task { await model.perform { _ = try await model.core?.pipeline.confirmPlan(data.dir) } }
                         }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.primary)
                         .disabled(running)
                     }
                     if !readOnly {
-                        Button("重新规划") { replanConfirm = true }.buttonStyle(.glass).disabled(running)
+                        Button("重新规划") { replanConfirm = true }.buttonStyle(.secondary).disabled(running)
                     }
                 })) {
                     SettingsRow(label: "领域") { Text(plan["profile"]?["domain"].text.ifEmpty("—") ?? "—").textSelection(.enabled) }
@@ -73,7 +73,7 @@ struct PlanTab: View {
                 EmptyHint(title: "还没有界面规划", systemImage: "rectangle.3.group")
                 if !readOnly {
                     Button("开始规划") { model.core?.run(data.dir, RunOptions(until: "plan", reviewPlan: true)) }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.primary)
                         .disabled(running)
                 }
             }
@@ -128,7 +128,7 @@ struct PlanScreenSheet: View {
                         "activeTab": activeTab.isEmpty ? .null : .string(activeTab), "visualBrief": .string(visualBrief), "textContract": textContract,
                     ]))
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.primary)
                 .keyboardShortcut(.defaultAction)
                 .disabled(title.jsTrimmed.isEmpty)
             }

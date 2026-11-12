@@ -167,10 +167,10 @@ struct SingleProjectForm: View {
             HStack {
                 Spacer()
                 Button("只创建") { submit(runNow: false) }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.secondary)
                     .controlSize(.large)
                 Button("创建并开始") { submit(runNow: true) }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.primary)
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
             }
@@ -337,7 +337,7 @@ struct BatchProjectForm: View {
             HStack {
                 Spacer()
                 Button("创建 \(count > 0 ? "\(count) " : "")个项目") { submit() }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.primary)
                     .controlSize(.large)
                     .disabled(busy || count == 0)
             }

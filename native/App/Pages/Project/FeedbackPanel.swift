@@ -110,7 +110,7 @@ struct FeedbackPanel: View {
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.primary)
                 .controlSize(.large)
                 .disabled(pending.isEmpty || running || !canAnalyze || analyzing)
                 .padding(.top, 6)
@@ -264,7 +264,7 @@ struct FeedbackPlanSheet: View {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("确认，统一修改") { apply() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.primary)
                     .keyboardShortcut(.defaultAction)
                     .disabled(chosen.isEmpty || busy)
             }

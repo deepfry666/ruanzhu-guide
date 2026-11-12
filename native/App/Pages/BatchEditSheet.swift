@@ -127,7 +127,7 @@ struct BatchEditSheet: View {
                 Button("取消", action: cancel).keyboardShortcut(.cancelAction)
                 Button(wantsFeedback ? "下一步：整理修改意见" : "下一步") { next() }
                     .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.primary)
                     .disabled(editable.isEmpty || (!wantsFeedback && codeMode == "none" && !pdf && force == "none") || (codeMode == "fixed" && templateId.isEmpty))
             }
         }
@@ -203,7 +203,7 @@ struct BatchEditSheet: View {
                 Button("取消") { discard(); cancel() }.keyboardShortcut(.cancelAction)
                 Button("开始执行") { run() }
                     .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.primary)
                     .disabled(phase == .running || summaryLines.isEmpty)
             }
         }

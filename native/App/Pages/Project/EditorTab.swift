@@ -229,7 +229,7 @@ struct EditorTab: View {
             }
             if gate?["status"]?.string == "needs-manual", !data.readOnly {
                 HStack {
-                    Button("没有软件名，通过") { manual(screen, true) }.buttonStyle(.borderedProminent).controlSize(.small)
+                    Button("没有软件名，通过") { manual(screen, true) }.buttonStyle(.primary).controlSize(.small)
                     Button("不合格", role: .destructive) { manual(screen, false) }.controlSize(.small)
                 }
                 .disabled(running)
@@ -332,7 +332,7 @@ struct EditorTab: View {
                     .lineLimit(1...3)
                     .disabled(!editable)
                 Button("改图") { applyChange(index, screen, image: true) }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.primary)
                     .disabled(request.isEmpty || !editable || screen.file == nil)
                     .help("按这句话改这张截图（花一张图的费用），说明会按新图更新；改完会核对有没有改到")
                 Button("只改文字") { applyChange(index, screen, image: false) }

@@ -80,7 +80,7 @@ struct ProviderEditor: View {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存") { save() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.primary)
                     .keyboardShortcut(.defaultAction)
                     .disabled(busy)
             }

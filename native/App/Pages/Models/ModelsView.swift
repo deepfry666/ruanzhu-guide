@@ -64,7 +64,7 @@ struct ProvidersView: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button { editing = newProviderFromPreset("openai-sync", id: "", name: "") } label: { Label("添加线路", systemImage: "plus") }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.primary)
                     .help("添加线路")
             }
         }

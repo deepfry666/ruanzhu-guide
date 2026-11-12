@@ -49,7 +49,7 @@ struct DeliveryTab: View {
                             }
                         }
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.secondary)
                 }
                 if let build {
                     SettingsGroup(title: "上次生成") {
