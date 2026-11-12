@@ -327,7 +327,7 @@ extension Pipeline {
         let input = BuildInput(
             projectDir: dir, softwareName: name, content: content, codeSource: codeSource, txtFields: txtFields, languageOverride: languageOverride,
             excludeDirs: settings.codeDefaults.excludeDirs, floor: max(300, settings.pipeline.featureTextFloor == 0 ? 300 : settings.pipeline.featureTextFloor),
-            extraBrandTokens: extraTokens(state), stagingRoot: projectStore.stagingRoot, provenance: provenance, fontPlan: fontPlan
+            extraBrandTokens: extraTokens(state), stagingRoot: projectStore.stagingRoot, provenance: provenance, fontPlan: fontPlan, preserveContent: ctx.bundleOnly
         )
         let result = try await buildBundle(input) { message in
             self.setProgress(dir, .obj(["detail": .string(message)]))
@@ -336,11 +336,14 @@ extension Pipeline {
         let at = isoNow()
         let hashes = bundleHashes(dir, name)
         try await update(dir) { draft in
+            if !edited.isEmpty { draft["bundleUpdateNotice"] = "交付包里有手改过的文件，已另存到归档后更新" }
             draft["lastBuild"] = JSON.obj(["at": .string(at), "bundleHashes": hashes]).merging(result)
             draft["overwriteExternalEdits"] = nil
             // 记下这次用的代码来源：以后改总设置，已完成的项目不受影响
-            draft["request"]?["codeSource"] = codeSource ?? .null
-            draft["request"]?["codeSourceLocked"] = true
+            if !ctx.bundleOnly || draft["bundleRevision"] == state["bundleRevision"] {
+                draft["request"]?["codeSource"] = codeSource ?? .null
+                draft["request"]?["codeSourceLocked"] = true
+            }
             var warnings = draft["warnings"].items.filter { !($0.string ?? "").hasPrefix("构建：") }
             for warning in result["warnings"].items { warnings.append(.string("构建：\(warning.jsString)")) }
             if !(result["withCode"].isTruthy) { warnings.append("构建：没有代码来源，本次没有生成代码文档（在「设置 → 代码来源」里设置）") }

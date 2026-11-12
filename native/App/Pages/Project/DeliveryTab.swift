@@ -8,7 +8,6 @@ struct DeliveryTab: View {
     let running: Bool
     let onChanged: () -> Void
     @Environment(AppModel.self) private var model
-    @State private var reexportConfirm = false
     @State private var switching = false
 
     var body: some View {
@@ -21,15 +20,13 @@ struct DeliveryTab: View {
                 if !data.externalEdits.isEmpty, !readOnly {
                     Banner(.info, "这些文件在上次生成后改过：\(data.externalEdits.joined(separator: "、"))", message: "可能是在 WPS 里手改的。下次更新交付包时会用软件里的内容覆盖，手改的文件先另存到项目的 archive 文件夹，不会被清理。")
                 }
-                SettingsGroup(title: "交付文件", footer: nil, trailing: readOnly ? nil : AnyView(
-                    Button("生成 / 更新", systemImage: "hammer") { model.core?.run(data.dir) }.buttonStyle(.glassProminent).disabled(running)
-                )) {
+                SettingsGroup(title: "交付文件") {
                     if data.bundleFiles.isEmpty {
                         Text("还没有交付包").foregroundStyle(.secondary).padding(14)
                     } else {
                         ForEach(data.bundleFiles, id: \.self) { file in
                             SettingsRow(label: file) {
-                                Button("打开") { model.open(Path.join(data.bundleDir, file)) }.buttonStyle(.borderless)
+                                Button("打开") { model.openDelivery(data.dir, path: Path.join(data.bundleDir, file)) }.buttonStyle(.borderless)
                             }
                         }
                     }
@@ -41,17 +38,16 @@ struct DeliveryTab: View {
                 .font(.caption)
                 if !data.bundleFiles.isEmpty {
                     HStack {
-                        Button("打开文件夹", systemImage: "folder") { model.open(data.bundleDir) }
+                        Button("打开文件夹", systemImage: "folder") { model.openDelivery(data.dir, path: data.bundleDir) }
                         Button("打包 zip", systemImage: "doc.zipper") {
                             Task {
                                 do {
-                                    if let target = try model.core?.zipBundle(data.dir) { model.reveal(target) }
+                                    if let target = try await model.core?.zipBundle(data.dir) { model.reveal(target) }
                                 } catch {
                                     model.toast(.error, messageOf(error))
                                 }
                             }
                         }
-                        Button("重新导出 PDF", systemImage: "doc.richtext") { reexportConfirm = true }.disabled(running)
                     }
                     .buttonStyle(.glass)
                 }
@@ -150,22 +146,6 @@ struct DeliveryTab: View {
                     }
                 }
             }
-        }
-        .confirmationDialog("重新导出 PDF 并检查排版？", isPresented: $reexportConfirm, titleVisibility: .visible) {
-            Button("重新导出") {
-                guard let core = model.core else { return }
-                model.toast(.info, "已开始重新导出 PDF")
-                Task {
-                    let result = await core.reexportPdfs([data.dir])
-                    let failed = result["failed"].items.map(\.jsString)
-                    if !failed.isEmpty { model.alert = AlertItem(title: "重新导出 PDF 失败", message: failed.joined(separator: "\n")) }
-                    else if result["done"]?[0]?["warnings"].items.isEmpty == false { model.toast(.warning, "转出来的字体仍然不对，可以在「设置 → PDF 与字体」里换一个替代字体再试") }
-                    else { model.toast(.success, "已重新导出 PDF") }
-                    onChanged()
-                }
-            }
-        } message: {
-            Text("导出时检查截图栏宽，旧指南存在遮挡时用已有截图和正文重排指南 Word。TXT、代码 Word 和截图不变，不调用 AI；旧文件先归档。")
         }
     }
 

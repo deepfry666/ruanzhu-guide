@@ -47,6 +47,26 @@ final class DevControl {
                 try? FS.writeJSONAtomic(Path.join(model.dataDir, "trial-step-result.json"),
                                        .obj(["step": .string(value), "status": .string(result.status), "error": result.error.map(JSON.string) ?? .null]))
             }
+        case "trialEdit", "trialExport", "trialGatePending":
+            guard AppModel.isTrial, !model.trialMeasure, let core = model.core, let dir = model.projectPath.last,
+                  Path.isInside(TrialData.canonical(Path.join(model.dataDir, "workspace")), TrialData.canonical(dir)) else { return }
+            Task {
+                do {
+                    if key == "trialEdit" {
+                        try await core.pipeline.saveContent(dir, overview: value, screens: [])
+                    } else if key == "trialExport" {
+                        let result = try await core.exportBundles([dir], targetDir: value)
+                        try FS.writeJSONAtomic(Path.join(model.dataDir, "trial-export-result.json"), result)
+                    } else {
+                        // 等效于换图后失效的验收状态，不执行任何模型步骤。
+                        _ = try await core.projectStore.update(dir) { state in
+                            state.mergeChild("steps", "gate", ["status": "pending"])
+                            state["status"] = "idle"
+                        }
+                        model.bump(dir)
+                    }
+                } catch { model.toast(.error, messageOf(error)) }
+            }
         case "back": model.projectPath = []
         case "projectTab": model.devProjectTab = ProjectTab(name: value)
         case "feedback": model.devFeedbackOpen = value == "open"

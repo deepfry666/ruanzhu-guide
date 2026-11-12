@@ -43,8 +43,12 @@ extension Pipeline {
     @discardableResult
     public func start(_ dir: String, _ options: RunOptions = RunOptions()) -> Task<RunResult, Never> {
         running.withLock { table in
-            if let existing = table[dir], let task = existing.task { return task }
+            if let existing = table[dir], let task = existing.task {
+                if options.bundleOnly || !existing.bundleOnly { return task }
+                return Task { _ = await task.value; return await self.start(dir, options).value }
+            }
             let handle = RunHandle(cancellable: true)
+            handle.bundleOnly = options.bundleOnly
             let task = Task<RunResult, Never> {
                 let result = await self.runInner(dir, options)
                 self.running.withLock { if $0[dir] === handle { $0[dir] = nil } }
@@ -75,8 +79,8 @@ extension Pipeline {
             "startedAt": .string(startedAt), "started": .number(tracker.started), "step": .null, "stepStarted": .null, "plannedSteps": [], "doneSteps": [],
             "screens": .emptyObject, "detail": .null, "reason": JSON.orNull(options.reason),
         ])
-        progress.withLock { $0[dir] = initial }
-        emit(.obj(["type": "progress", "projectDir": .string(dir), "progress": initial]))
+        if !options.bundleOnly { progress.withLock { $0[dir] = initial } }
+        if !options.bundleOnly { emit(.obj(["type": "progress", "projectDir": .string(dir), "progress": initial])) }
         var result: RunResult
         do {
             result = try await runSteps(dir, options, tracker)
@@ -86,7 +90,7 @@ extension Pipeline {
         }
         progress.withLock { $0[dir] = nil }
         emit(.obj(["type": "progress", "projectDir": .string(dir), "progress": .null]))
-        if !tracker.isEmpty {
+        if !options.bundleOnly, !tracker.isEmpty {
             let entry: JSON = .obj(["startedAt": .string(startedAt), "ms": .number(nowMs() - tracker.started), "steps": tracker.json, "status": .string(result.status), "reason": JSON.orNull(options.reason)])
             try? await recordRun(dir, entry, samples: tracker.samples)
         }
@@ -129,6 +133,10 @@ extension Pipeline {
     func runSteps(_ dir: String, _ options: RunOptions, _ tracker: StepTracker) async throws -> RunResult {
         guard let initial = try projectStore.read(dir) else { return RunResult(status: "failed", error: "项目状态不存在") }
         if initial["readOnly"].isTruthy { return RunResult(status: "failed", error: "只读的历史项目（没有文案和截图源文件），不能运行") }
+        if options.bundleOnly {
+            guard onlyLocalStepsRemain(initial), !isQueued(dir) else { return RunResult(status: "idle") }
+        }
+        let revision = initial["bundleRevision"]
         let settings = try await settingsStore.get()
         let batchId = options.batchId ?? "\(Path.basename(dir)):\(timestampSlug())"
         let fromIndex = options.from.flatMap { PIPELINE_STEPS.firstIndex(of: $0) } ?? 0
@@ -139,13 +147,18 @@ extension Pipeline {
         let force = Set(options.force)
         if fromIndex <= untilIndex { setProgress(dir, .obj(["plannedSteps": JSON(Array(PIPELINE_STEPS[fromIndex...untilIndex]))])) }
         try await update(dir) { state in
-            state["status"] = "running"
+            if !options.bundleOnly { state["status"] = "running" }
             state["lastError"] = .null
         }
         var index = fromIndex
         while index <= untilIndex {
             defer { index += 1 }
             let step = PIPELINE_STEPS[index]
+            if options.bundleOnly {
+                guard ["receipt", "build"].contains(step) else { throw StudioError("自动更新仅允许本机步骤") }
+                let current = try readState(dir)
+                if current["bundleRevision"] != revision || !onlyLocalStepsRemain(current) || isQueued(dir) { return RunResult(status: "idle") }
+            }
             if Task.isCancelled {
                 try await update(dir) { state in
                     state["status"] = "canceled"
@@ -177,7 +190,7 @@ extension Pipeline {
                     reviewPlan: options.reviewPlan ?? settings.pipeline.reviewPlanSingle,
                     forceScreens: options.forceScreens, forceContent: options.forceContent,
                     contentInstructions: options.contentInstructions, designInstruction: options.designInstruction,
-                    forceDesign: force.contains("design")
+                    forceDesign: force.contains("design"), bundleOnly: options.bundleOnly
                 )
                 let outcome = try await stepImpl(step, ctx)
                 tracker.add(step, nowMs() - stepStarted)
@@ -185,6 +198,7 @@ extension Pipeline {
                 let finalHash = stepInputHash(step, dir, try readState(dir), settings)
                 let finishedAt = isoNow()
                 try await update(dir) { draft in
+                    if options.bundleOnly, draft["bundleRevision"] != revision { return }
                     draft["steps"]?[step] = .obj(["status": .string(outcome.status), "inputHash": JSON.orNull(finalHash), "finishedAt": .string(finishedAt), "message": JSON.orNull(outcome.message)])
                     if let reason = outcome.screenCountReason, !reason.isEmpty { draft["screenCountReason"] = .string(reason) }
                 }
@@ -204,7 +218,7 @@ extension Pipeline {
                 let label = STEP_LABELS[step] ?? step
                 try await update(dir) { draft in
                     draft.mergeChild("steps", step, .obj(["status": .string(canceled ? "pending" : "failed"), "error": .string(message), "finishedAt": .string(finishedAt)]))
-                    draft["status"] = .string(canceled ? "canceled" : "needs-attention")
+                    if !options.bundleOnly { draft["status"] = .string(canceled ? "canceled" : "needs-attention") }
                     draft["lastError"] = canceled ? .null : .string("\(label)：\(message)")
                     appendLog(&draft, canceled ? "已停止" : "\(label)失败：\(message)", canceled ? "info" : "error")
                 }
@@ -215,7 +229,7 @@ extension Pipeline {
         let final = try readState(dir)
         let allDone = PIPELINE_STEPS.allSatisfy { ["done", "skipped"].contains(final["steps"]?[$0]?["status"]?.string ?? "") }
         try await update(dir) {
-            $0["status"] = .string(allDone ? "done" : "idle")
+            if !options.bundleOnly || allDone { $0["status"] = .string(allDone ? "done" : "idle") }
             if allDone { $0["contentDateNeedsRefresh"] = nil }
         }
         return RunResult(status: allDone ? "done" : "idle")
@@ -228,8 +242,12 @@ extension Pipeline {
             for step in steps where state["steps"]?[step] != nil {
                 state.mergeChild("steps", step, .obj(["status": "pending", "inputHash": .null]))
             }
-            if state["status"]?.string == "done" { state["status"] = "idle" }
+            state["bundleRevision"] = .number((state["bundleRevision"]?.number ?? 0) + 1)
+            state["bundleUpdateError"] = nil
+            state["bundleUpdateNotice"] = nil
+            if state["status"]?.string == "done", !self.onlyLocalStepsRemain(state) { state["status"] = "idle" }
         }
+        await scheduleBundleUpdate(dir)
     }
 
     func assertScreenId(_ id: String) throws {
@@ -401,7 +419,7 @@ extension Pipeline {
     /// design：整章设计说明（[{title, text}]），nil 表示不改
     public func saveContent(_ dir: String, overview: String?, screens patches: [JSON], design: [JSON]? = nil) async throws {
         try assertEditable(dir)
-        try assertIdle(dir)
+        if isForegroundRunning(dir) { try assertIdle(dir) }
         let paths = projectPaths(dir)
         guard var content = try FS.readJSON(paths.content) else { throw StudioError("还没有文案") }
         // 改之前的文字先记进历史；连续自动保存时同一处 3 分钟内只记一份
@@ -492,7 +510,7 @@ extension Pipeline {
     @discardableResult
     public func updateRequest(_ dir: String, _ patch: JSON) async throws -> JSON {
         try assertEditable(dir)
-        try assertIdle(dir)
+        if isForegroundRunning(dir) { try assertIdle(dir) }
         let state = try readState(dir)
         let before = state["request"] ?? .emptyObject
         var patch = patch

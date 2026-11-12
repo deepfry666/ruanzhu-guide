@@ -367,7 +367,7 @@ struct ProjectsView: View {
                 } else if model.codeBatch?.pending.contains(row.dir) == true {
                     TagView(text: "等待更新代码", tone: .neutral)
                 } else {
-                    TagView(text: info.label, tone: info.tone)
+                    TagView(text: row.json["bundleUpdating"].isTruthy ? "\(info.label) · 交付包更新中" : info.label, tone: info.tone)
                     if let reason = model.codeFailed[row.dir] {
                         TagView(text: reason.hasPrefix("跳过") ? "代码没更新" : "代码更新失败", tone: .red).help(reason)
                     } else if model.codeUpdated.contains(row.dir) {

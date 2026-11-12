@@ -40,6 +40,17 @@ struct ManualStudioApp: App {
                 Button("设置…") { model.go(.settings) }
                     .keyboardShortcut(",")
             }
+            CommandMenu("项目") {
+                Button("检查并更新") {
+                    if let dir = model.projectPath.last {
+                        Task {
+                            guard let core = model.core, let data = try? await core.getProject(dir) else { return }
+                            if core.pipeline.bundleNeedsContinuation(data["state"] ?? .emptyObject) { core.run(dir) }
+                            else { await core.retryBundleUpdate(dir) }
+                        }
+                    }
+                }.keyboardShortcut("r").disabled(model.projectPath.isEmpty)
+            }
             CommandMenu("前往") {
                 Button("新建项目") { model.go(.new) }.keyboardShortcut("1")
                 Button("历史项目") { model.go(.projects) }.keyboardShortcut("2")
@@ -64,6 +75,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 主动退出（⌘Q）时还有项目在运行，先确认。
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if let model, !model.bundleWork.isEmpty {
+            model.keptInBackground = true
+            NSApp.windows.filter { $0.canBecomeMain }.forEach { $0.orderOut(nil) }
+            model.quitIfIdleInBackground()
+            return .terminateCancel
+        }
         let running = model?.core?.pipeline.runningProjects() ?? []
         guard !running.isEmpty else { return .terminateNow }
         let alert = NSAlert()

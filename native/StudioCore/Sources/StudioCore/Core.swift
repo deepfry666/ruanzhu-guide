@@ -77,6 +77,7 @@ public final class StudioCore: @unchecked Sendable {
         pipelineRef.withLock { $0 = pipeline }
         batch = BatchQueue(dataDir: dataDir, settingsStore: settingsStore, pipeline: pipeline, emit: emit)
         batchRef.withLock { $0 = batch }
+        pipeline.isQueued = { dir in batchRef.current?.list().items.contains { $0["projectDir"]?.string == dir && ["queued", "running", "paused"].contains($0["status"].text) } ?? false }
         callLog.onAppend { row in emit(.obj(["type": "call", "row": row])) }
     }
 
@@ -124,7 +125,7 @@ public final class StudioCore: @unchecked Sendable {
         let alive = FS.exists(dir)
         let queued = queueByDir[dir]
         let live = pipeline.getProgress(dir)
-        let running = pipeline.isRunning(dir)
+        let running = pipeline.isForegroundRunning(dir)
         var steps = JSONObject()
         for step in PIPELINE_STEPS { steps[step] = state["steps"]?[step]?["status"] ?? "pending" }
         let lastBuild = state["lastBuild"]
@@ -138,6 +139,7 @@ public final class StudioCore: @unchecked Sendable {
         summary["readOnly"] = .bool(state["readOnly"].isTruthy)
         summary["submitted"] = state["submitted"]?["at"].truthyValue ?? .null
         summary["status"] = !alive ? "missing" : state["readOnly"].isTruthy ? "readonly" : running ? "running" : state["status"] ?? "idle"
+        summary["bundleUpdating"] = .bool(pipeline.bundleActive.current.contains(dir))
         summary["steps"] = .object(steps)
         summary["screens"] = .number(Double(screenCount > 0 ? screenCount : state["request"]?["screenCount"]?.int ?? 0))
         summary["hasCodeSource"] = .bool(codeSourceFor(state, settings).source?["path"].isTruthy ?? false)
@@ -369,8 +371,8 @@ public final class StudioCore: @unchecked Sendable {
         let settings = try await settingsStore.get()
         let code = codeSourceFor(state, settings)
         return .obj([
-            "dir": .string(dir), "state": state, "plan": (plan ?? nil) ?? .null, "content": content ?? .null, "screens": .array(screens),
-            "bundleDir": .string(bundleDir), "bundleFiles": JSON(bundleFiles), "running": .bool(pipeline.isRunning(dir)), "progress": pipeline.getProgress(dir) ?? .null,
+            "dir": .string(dir), "state": state.merging(.obj(["bundleUpdating": .bool(pipeline.bundleActive.current.contains(dir))])), "plan": (plan ?? nil) ?? .null, "content": content ?? .null, "screens": .array(screens),
+            "bundleDir": .string(bundleDir), "bundleFiles": JSON(bundleFiles), "running": .bool(pipeline.isForegroundRunning(dir)), "progress": pipeline.getProgress(dir) ?? .null,
             "codeSource": .obj([
                 "source": code.source ?? .null, "locked": .bool(code.locked), "global": settings.codeSource.path.isEmpty ? .null : settings.codeSource.json,
                 "templateId": JSON.orNull(settings.codeTemplates.entry(forPath: code.source?["path"]?.string ?? "")?.id),
@@ -678,8 +680,14 @@ public final class StudioCore: @unchecked Sendable {
     public func defaultExportGroupName() -> String { defaultGroupName() }
 
     public func exportBundles(_ dirs: [String], targetDir: String, conflict: String = "skip", groupName: String = "") async throws -> JSON {
-        for dir in dirs where pipeline.isRunning(dir) { throw StudioError("「\(Path.basename(dir))」正在运行，等它跑完再导出") }
-        let result = try StudioCore_exportBundles(dirs: dirs, targetDir: targetDir, projectStore: projectStore, conflict: conflict, groupName: groupName, trashItem: trashItem)
+        var ready: [String] = []
+        var skipped: [JSON] = []
+        for dir in dirs {
+            do { try await ensureBundleCurrent(dir); ready.append(dir) }
+            catch { skipped.append(.obj(["name": .string(Path.basename(dir)), "reason": .string(messageOf(error))])) }
+        }
+        var result = try StudioCore_exportBundles(dirs: ready, targetDir: targetDir, projectStore: projectStore, conflict: conflict, groupName: groupName, trashItem: trashItem)
+        result["skipped"] = .array(result["skipped"].items + skipped)
         try await settingsStore.update { $0.export.lastDir = targetDir }
         return result
     }
@@ -743,7 +751,8 @@ public final class StudioCore: @unchecked Sendable {
     }
 
     /// 把交付包打成 zip，放在项目文件夹里。
-    public func zipBundle(_ dir: String) throws -> String {
+    public func zipBundle(_ dir: String) async throws -> String {
+        try await ensureBundleCurrent(dir)
         guard let state = try projectStore.read(dir) else { throw StudioError("项目不存在") }
         let name = state["request"]?["softwareName"]?.jsString ?? ""
         let bundleDir = projectPaths(dir).bundle(name)
@@ -796,6 +805,9 @@ public final class StudioCore: @unchecked Sendable {
         // 上次关软件前已经手动处理完的项目
         let projectStore = self.projectStore
         await batch.settle { dir in (try? projectStore.read(dir))??["status"]?.string }
+        for entry in readIndex()["projects"].items {
+            if let dir = entry["dir"]?.string { await pipeline.scheduleBundleUpdate(dir) }
+        }
     }
 }
 

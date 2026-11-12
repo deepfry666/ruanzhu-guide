@@ -154,8 +154,10 @@ final class AppModel {
     private var batchNotified = false
 
     /// 还有没跑完的活：项目在运行、批量队列没跑完（暂停的不算）、正在重新导出 PDF。
+    var bundleWork: Set<String> = []
+
     var hasBackgroundWork: Bool {
-        devHoldBackground || !(core?.pipeline.runningProjects().isEmpty ?? true) || (batchActive && !batchPaused) || pdfJob != nil
+        !bundleWork.isEmpty || devHoldBackground || !(core?.pipeline.runningProjects().isEmpty ?? true) || (batchActive && !batchPaused) || pdfJob != nil
     }
     /// 开发自检：假装有任务在跑（MS_DEV_CONTROL 的 hold=1）
     var devHoldBackground = false
@@ -302,6 +304,17 @@ final class AppModel {
         let type = event["type"]?.string ?? ""
         let dir = event["projectDir"]?.string
         switch type {
+        case "bundle-dirty", "bundle-updating":
+            if let dir {
+                bundleWork.insert(dir)
+                bump(dir)
+            }
+            scheduleProjectsReload(300)
+        case "bundle-updated":
+            if let dir { bundleWork.remove(dir); bump(dir) }
+            toast(.info, "交付包更新已结束")
+            scheduleProjectsReload(300)
+            quitIfIdleInBackground()
         case "startup-error":
             // 恢复失败时不能继续修改项目，否则以后恢复旧快照会覆盖新修改。
             phase = .failed(event["message"].text)
@@ -484,6 +497,15 @@ final class AppModel {
             return
         }
         NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    }
+
+    func openDelivery(_ dir: String, path: String) {
+        Task {
+            await perform {
+                try await core?.ensureBundleCurrent(dir)
+                open(path)
+            }
+        }
     }
 
     func reveal(_ path: String) {

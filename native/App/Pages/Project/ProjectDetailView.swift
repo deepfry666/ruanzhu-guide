@@ -91,6 +91,7 @@ struct ProjectDetailView: View {
         PageScroll {
             HStack(spacing: 6) {
                 TagView(text: status.label, tone: status.tone)
+                if data.state["bundleUpdating"].isTruthy { TagView(text: "交付包更新中", tone: .blue) }
                 if data.origin == "imported" { TagView(text: "历史") }
                 if let timing = data.timing {
                     if let completed = timing["completedMs"]?.number {
@@ -122,29 +123,23 @@ struct ProjectDetailView: View {
                     }
                 }
             }
-            if waitingStep == "build", !running {
-                // 交付包在软件外被改过（比如 WPS 里手改）：问清楚再覆盖
-                Banner(.warning, "交付包里有文件在软件外改过", message: data.stepMessage("build")) {
-                    Button("保留我的修改") {
-                        Task { await model.perform("已保留，这次没有更新交付包") { _ = try await model.core?.pipeline.resolveExternalEdits(dir, overwrite: false) }; refresh() }
-                    }
-                    .buttonStyle(.glass)
-                    Button("覆盖并更新") {
-                        Task { await model.perform("已开始更新，手改的文件另存在项目的 archive 文件夹") { _ = try await model.core?.pipeline.resolveExternalEdits(dir, overwrite: true) } }
-                    }
-                    .buttonStyle(.glassProminent)
+            if let error = data.state["bundleUpdateError"]?.string, !data.readOnly {
+                Banner(.error, "交付包更新失败", message: error) {
+                    Button("重试") { Task { await model.core?.retryBundleUpdate(dir) } }
                 }
-            } else if let step = waitingStep, !running {
-                Banner(.warning, step == "plan" ? "界面规划已生成，请在「规划」里检查，确认后继续生图" : data.stepMessage(step) ?? "「\(UI_STEP_LABELS[step] ?? step)」等待确认") {
+            } else if model.core?.pipeline.bundleNeedsContinuation(data.state) == true, !running {
+                Banner(.warning, "交付包待更新", message: "需要继续：\(STEP_ORDER.filter { !["receipt", "build"].contains($0) && !["done", "skipped"].contains(data.stepStatus($0)) }.map { UI_STEP_LABELS[$0] ?? $0 }.joined(separator: "、"))（可能调用 AI）") {
+                    Button("继续") { model.core?.run(dir) }
+                }
+            }
+            if let notice = data.state["bundleUpdateNotice"]?.string {
+                Banner(.warning, notice)
+            }
+            if let step = waitingStep, step != "build", !running {
+                Banner(.warning, data.stepMessage(step) ?? "等待确认") {
                     if step == "plan" {
-                        Button("确认规划，继续") {
-                            Task { await model.perform { _ = try await model.core?.pipeline.confirmPlan(dir) } }
-                        }
-                        .buttonStyle(.glassProminent)
-                    } else {
-                        Button("去确认截图") { tab = .editor }
-                            .buttonStyle(.glass)
-                    }
+                        Button("确认规划，继续") { Task { _ = try? await model.core?.pipeline.confirmPlan(dir) } }
+                    } else { Button("去确认截图") { tab = .editor } }
                 }
             }
             if let live {
@@ -213,16 +208,15 @@ struct ProjectDetailView: View {
                         Label("停止", systemImage: "stop.fill")
                     }
                     .help("停止")
-                } else if !readOnly {
+                } else if !readOnly, model.core?.pipeline.bundleNeedsContinuation(data.state) == true {
                     Button {
                         model.core?.run(dir)
                     } label: {
-                        Label(data.status == "done" ? "检查并更新" : "继续运行", systemImage: "play.fill")
+                        Label("继续", systemImage: "play.fill")
                             .labelStyle(.titleAndIcon)
                     }
                     .buttonStyle(.glassProminent)
-                    .keyboardShortcut("r")
-                    .help("\(data.status == "done" ? "检查并更新" : "继续运行")（⌘R）")
+                    .help("继续")
                 }
             }
         }

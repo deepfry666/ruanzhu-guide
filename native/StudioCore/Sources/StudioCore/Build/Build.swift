@@ -84,6 +84,7 @@ public struct BuildInput: Sendable {
     public var stagingRoot: String
     public var provenance: JSON?
     public var fontPlan: [String: FontPlanEntry]?
+    public var preserveContent = false
 }
 
 /// S8 构建：先在 staging 生成并校验，全部通过后才替换正式交付包（旧的先归档）。
@@ -104,6 +105,9 @@ public func buildBundle(_ input: BuildInput, onLog: @Sendable (String) async -> 
 
     await onLog("生成指南 Word")
     let regionFill = try createGuideDocx(project: staging, software: softwareName, content: input.content)
+    if try guideNeedsImageFitRepair(Path.join(stagingBundle, "\(softwareName)指南.docx")) {
+        throw StudioError("指南截图超出栏宽，交付包未更新")
+    }
 
     let soffice = await findLibreOffice()
     let withPdf = soffice != nil
@@ -171,7 +175,7 @@ public func buildBundle(_ input: BuildInput, onLog: @Sendable (String) async -> 
         pruneBundleArchives(paths.archive, softwareName)
     }
     try FS.move(stagingBundle, finalBundle)
-    try FS.writeJSONAtomic(paths.content, input.content)
+    if !input.preserveContent { try FS.writeJSONAtomic(paths.content, input.content) }
     try FS.writeJSONAtomic(paths.manifest, manifest)
     try FS.writeJSONAtomic(paths.regionIndex, regionIndex)
     FS.remove(staging)

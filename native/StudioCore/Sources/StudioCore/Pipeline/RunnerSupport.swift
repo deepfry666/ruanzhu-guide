@@ -95,6 +95,7 @@ func mapLimit<T: Sendable, R: Sendable>(_ items: [T], _ limit: Int, _ worker: @e
 }
 
 public struct RunOptions: Sendable {
+    var bundleOnly = false
     public var from: String?
     public var until: String?
     public var force: [String] = []
@@ -143,6 +144,7 @@ struct StepContext: Sendable {
     let contentInstructions: [String: String]?
     let designInstruction: String?
     let forceDesign: Bool
+    var bundleOnly = false
 }
 
 struct StepOutcome: Sendable {

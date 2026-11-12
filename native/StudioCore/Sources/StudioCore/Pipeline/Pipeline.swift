@@ -17,6 +17,7 @@ public final class Pipeline: @unchecked Sendable {
 
     final class RunHandle: @unchecked Sendable {
         var task: Task<RunResult, Never>?
+        var bundleOnly = false
         let cancellable: Bool
         init(cancellable: Bool) { self.cancellable = cancellable }
         func cancel() { if cancellable { task?.cancel() } }
@@ -25,6 +26,8 @@ public final class Pipeline: @unchecked Sendable {
     let running = Locked<[String: RunHandle]>([:])
     let progress = Locked<[String: JSON]>([:])
     let statsCache = Locked<JSON?>(nil)
+    let bundleUpdates = BundleUpdates()
+    var isQueued: @Sendable (String) -> Bool = { _ in false }
     let applying = Locked<Set<String>>([])
 
     public init(settingsStore: SettingsStore, secrets: SecretStore, gateway: ImageGateway, projectStore: ProjectStore, llmLog: CallLog, emit: @escaping @Sendable (JSON) -> Void = { _ in }, http: HTTPClient, visionImage: @escaping @Sendable (String) throws -> String = visionDataUrl, appVersion: String = "", statsFile: String? = nil, llmRetryDelay: @escaping @Sendable (Double) async throws -> Void = { try await sleepMs($0) }) {
@@ -86,6 +89,8 @@ public final class Pipeline: @unchecked Sendable {
 
     public func getProgress(_ dir: String) -> JSON? { progress.withLock { $0[dir] } }
     public func isRunning(_ dir: String) -> Bool { running.withLock { $0[dir] != nil } }
+    public func isForegroundRunning(_ dir: String) -> Bool { running.withLock { $0[dir] != nil && $0[dir]?.bundleOnly != true } }
+    let bundleActive = Locked<Set<String>>([])
     public func runningProjects() -> [String] { running.withLock { Array($0.keys) } }
 
     // MARK: - 各步骤历史用时（估算剩余时间用）

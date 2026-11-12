@@ -158,7 +158,7 @@ struct EditorTab: View {
                 case .idle: Label("文字改了自动保存", systemImage: "checkmark.circle").foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("改完点右上角「检查并更新」（⌘R）更新交付包").font(.callout).foregroundStyle(.secondary)
+                Text("保存后交付包约 3 秒自动更新；需要 AI 时请点「继续」").font(.callout).foregroundStyle(.secondary)
             }
         }
     }
