@@ -47,9 +47,13 @@ struct EditorTab: View {
 
     var contentKey: String {
         guard let content = data.content else { return "" }
-        return JSON.obj([
+        return Self.key(for: content)
+    }
+
+    private static func key(for content: JSON) -> String {
+        JSON.obj([
             "o": content["cover"]?["overview"] ?? .null,
-            "s": .array(contentScreens.map { .array([$0["id"] ?? .null, $0["title"] ?? .null, $0["text"] ?? .null]) }),
+            "s": .array(content["screens"].items.map { .array([$0["id"] ?? .null, $0["title"] ?? .null, $0["text"] ?? .null]) }),
             "d": content["design"]?["sections"] ?? .null,
         ]).serialized()
     }
@@ -64,6 +68,29 @@ struct EditorTab: View {
     }
 
     @State var selectedScreen = ""
+
+    /// 首次创建文字控件时就带入文案，避免出现后再填充空状态触发整页布局。
+    init(data: ProjectData, running: Bool, onChanged: @escaping () -> Void) {
+        self.data = data
+        self.running = running
+        self.onChanged = onChanged
+        guard let content = data.content else { return }
+        let overview = content["cover"]?["overview"].text ?? ""
+        let screens = content["screens"].items
+        let titles = Dictionary(screens.map { ($0["id"]?.jsString ?? "", $0["title"]?.jsString ?? "") }, uniquingKeysWith: { first, _ in first })
+        let texts = Dictionary(screens.map { ($0["id"]?.jsString ?? "", $0["text"]?.jsString ?? "") }, uniquingKeysWith: { first, _ in first })
+        let sections = (content["design"]?["sections"].items ?? []).map { Section(title: $0["title"].text, text: $0["text"].text) }
+        // 草稿和已保存基线同时初始化；后续同步仍保留未保存的修改。
+        _overview = State(initialValue: overview)
+        _baseOverview = State(initialValue: overview)
+        _titles = State(initialValue: titles)
+        _baseTitles = State(initialValue: titles)
+        _texts = State(initialValue: texts)
+        _baseTexts = State(initialValue: texts)
+        _sections = State(initialValue: sections)
+        _baseSections = State(initialValue: sections)
+        _loadedKey = State(initialValue: Self.key(for: content))
+    }
 
     var body: some View {
         Group {
