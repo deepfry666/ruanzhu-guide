@@ -32,7 +32,7 @@ struct PlanTab: View {
                     SettingsRow(label: "屏数理由") { Text(plan["featureMap"]?["coverageReason"].text.ifEmpty("—") ?? "—").multilineTextAlignment(.trailing).textSelection(.enabled) }
                 }
                 if data.origin == "imported" {
-                    Text("历史项目：编辑某一屏会按新格式重写它的提示词并重新生图。").font(.callout).foregroundStyle(.secondary)
+                    Text("旧项目：编辑某一屏会按新格式重写它的提示词并重新生图。").font(.callout).foregroundStyle(.secondary)
                 }
                 SettingsGroup(title: "界面（\(plan["screens"].items.count) 屏）") {
                     ForEach(plan["screens"].items, id: \.self) { screen in

@@ -32,7 +32,10 @@ final class DevControl {
 
     private func apply(_ key: String, _ value: String, _ model: AppModel) {
         switch key {
-        case "section": if let item = SidebarItem(rawValue: value) { model.go(item) }
+        case "section":
+            model.newProjectPresented = false
+            if value == "new" { model.showNewProject() }
+            else if let item = SidebarItem(rawValue: value) { model.go(item) }
         case "modelsTab": model.modelsTab = value
         case "settingsTab": model.settingsTab = value
         case "open": model.openProject(value)
@@ -70,7 +73,10 @@ final class DevControl {
         case "back": model.projectPath = []
         case "projectTab": model.devProjectTab = ProjectTab(name: value)
         case "feedback": model.devFeedbackOpen = value == "open"
-        case "newMode": model.devNewMode = value
+        case "newMode":
+            guard ["single", "batch"].contains(value) else { return }
+            model.devNewMode = value
+            model.showNewProject()
         case "select": model.devSelection = value == "none" ? [] : Set(value.split(separator: "|").map(String.init))
         case "appearance":
             NSApp.appearance = value == "dark" ? NSAppearance(named: .darkAqua) : value == "light" ? NSAppearance(named: .aqua) : nil

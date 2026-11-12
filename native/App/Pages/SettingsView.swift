@@ -24,7 +24,7 @@ struct SettingsView: View {
                     Text("代码模板").tag("code")
                     Text("PDF 与字体").tag("pdf")
                     Text("TXT").tag("txt")
-                    Text("导入历史项目").tag("import")
+                    Text("导入项目").tag("import")
                     Text("清理空间").tag("cleanup")
                 }
                 .pickerStyle(.segmented)
@@ -164,7 +164,7 @@ struct PdfSettings: View {
                         reload()
                     }
                 }
-                SettingsRow(label: "已做好的项目", hint: "在历史项目里勾选，点「重新导出 PDF」") {
+                SettingsRow(label: "已做好的项目", hint: "在「项目」里勾选，点「重新导出 PDF」") {
                     Button("前往") { model.go(.projects) }
                 }
             }
@@ -287,7 +287,7 @@ struct ImportPanel: View {
                 model.alert = AlertItem(
                     title: "导入了 \(result.imported.count) 个项目",
                     message: result.failed.isEmpty ? "只是登记，没有改动项目文件夹里的任何文件。" : result.failed.joined(separator: "\n"),
-                    actionTitle: "去历史项目",
+                    actionTitle: "去项目",
                     action: { model.go(.projects) }
                 )
                 scan(nil)

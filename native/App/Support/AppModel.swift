@@ -5,13 +5,12 @@ import SwiftUI
 import UserNotifications
 
 enum SidebarItem: String, Hashable, CaseIterable, Identifiable {
-    case new, projects, models, stats, settings
+    case projects, models, stats, settings
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .new: "新建项目"
-        case .projects: "历史项目"
+        case .projects: "项目"
         case .models: "模型与线路"
         case .stats: "统计"
         case .settings: "设置"
@@ -20,7 +19,6 @@ enum SidebarItem: String, Hashable, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
-        case .new: "plus.circle"
         case .projects: "square.grid.2x2"
         case .models: "cpu"
         case .stats: "chart.bar.xaxis"
@@ -90,6 +88,7 @@ final class AppModel {
     let appVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.0.0"
 
     // 导航
+    var newProjectPresented = false
     var section: SidebarItem? = .projects
     var projectPath: [String] = []
     /// 历史项目列表当前显示的顺序（项目页的上一个 / 下一个用）
@@ -484,6 +483,11 @@ final class AppModel {
         guard !trialMeasure else { return }
         section = .projects
         projectPath = [dir]
+    }
+
+    func showNewProject() {
+        guard phase == .ready, !trialMeasure else { return }
+        newProjectPresented = true
     }
 
     func go(_ item: SidebarItem, tab: String? = nil) {

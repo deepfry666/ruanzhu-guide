@@ -29,6 +29,10 @@ struct RootView: View {
                 }
             }
         }
+        .sheet(isPresented: $model.newProjectPresented) {
+            NewProjectView().environment(model).designSystem()
+                .overlay(alignment: .bottom) { ToastOverlay(toasts: model.toasts) }
+        }
         .overlay(alignment: .bottom) { ToastOverlay(toasts: model.toasts) }
         .alert(model.alert?.title ?? "", isPresented: Binding(get: { model.alert != nil }, set: { if !$0 { model.alert = nil } }), presenting: model.alert) { item in
             if let actionTitle = item.actionTitle, let action = item.action {
@@ -50,12 +54,10 @@ struct MainSplitView: View {
         @Bindable var model = model
         NavigationSplitView {
             SidebarView()
-                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 280)
+                .navigationSplitViewColumnWidth(Metrics.sidebarWidth)
         } detail: {
             Group {
                 switch model.section ?? .projects {
-                case .new:
-                    NavigationStack { NewProjectView() }
                 case .projects:
                     NavigationStack(path: $model.projectPath) {
                         ProjectsView()
@@ -90,27 +92,24 @@ struct SidebarView: View {
                         .tag(item)
                 }
             } header: {
-                HStack(spacing: 10) {
+                HStack(spacing: Spacing.sm) {
                     Image("Logo")
                         .resizable()
-                        .frame(width: 30, height: 30)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(model.displayName).font(.headline).foregroundStyle(.primary)
-                        Text("截图 · 文案 · 交付包").font(.caption).foregroundStyle(.secondary)
-                    }
+                        .frame(width: Metrics.segmentedHeight, height: Metrics.segmentedHeight)
+                    Text(model.displayName).textStyle(Typography.bodyStrong).foregroundStyle(Palette.text)
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, Spacing.sm)
                 .textCase(nil)
             }
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
             Text("v\(model.appVersion)")
-                .font(.caption)
+                .textStyle(Typography.caption)
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 12)
+                .padding(.horizontal, Spacing.lg)
+                .padding(.bottom, Spacing.md)
         }
         .onChange(of: model.section) { _, next in
             if next == .projects { model.projectPath = [] }

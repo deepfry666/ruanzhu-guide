@@ -35,7 +35,7 @@ struct ManualStudioApp: App {
                 Button("检查更新…") { Task { await updater.check(manual: true) } }
             }
             CommandGroup(replacing: .newItem) {
-                Button("新建项目") { model.go(.new) }
+                Button("新建项目") { model.showNewProject() }
                     .keyboardShortcut("n")
             }
             CommandGroup(replacing: .appSettings) {
@@ -54,11 +54,10 @@ struct ManualStudioApp: App {
                 }.keyboardShortcut("r").disabled(model.projectPath.isEmpty)
             }
             CommandMenu("前往") {
-                Button("新建项目") { model.go(.new) }.keyboardShortcut("1")
-                Button("历史项目") { model.go(.projects) }.keyboardShortcut("2")
-                Button("模型与线路") { model.go(.models) }.keyboardShortcut("3")
-                Button("统计") { model.go(.stats) }.keyboardShortcut("4")
-                Button("设置") { model.go(.settings) }.keyboardShortcut("5")
+                Button("项目") { model.go(.projects) }.keyboardShortcut("1")
+                Button("模型与线路") { model.go(.models) }.keyboardShortcut("2")
+                Button("统计") { model.go(.stats) }.keyboardShortcut("3")
+                Button("设置") { model.go(.settings) }.keyboardShortcut("4")
             }
         }
     }

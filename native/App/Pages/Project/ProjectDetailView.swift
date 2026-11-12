@@ -108,7 +108,7 @@ struct ProjectDetailView: View {
                     Button("取消已提交") { setSubmitted(false) }.buttonStyle(.secondary)
                 }
             } else if data.historyReadOnly {
-                Banner(.info, "这个历史项目只有交付包，没有文案和截图源文件，只能查看。")
+                Banner(.info, "这个旧项目只有交付包，没有文案和截图源文件，只能查看。")
             }
             if model.codeBatch?.current == dir {
                 Banner(.info, "正在更新这个项目的代码材料…", message: "重排代码 Word、PDF 和 TXT 开头，几秒钟。")
@@ -249,7 +249,7 @@ struct ProjectDetailView: View {
             Button("只从列表移除") { remove(deleteFolder: false) }
             Button("移除并把文件夹移到废纸篓", role: .destructive) { remove(deleteFolder: true) }
         } message: {
-            Text("只从列表移除：项目文件夹留在原处，以后可以在「设置 → 导入历史项目」里重新导入。\n移到废纸篓：项目文件夹（截图、文档、交付包）一起移到废纸篓，清空废纸篓前都可以恢复。")
+            Text("只从列表移除：项目文件夹留在原处，以后可以在「设置 → 导入项目」里重新导入。\n移到废纸篓：项目文件夹（截图、文档、交付包）一起移到废纸篓，清空废纸篓前都可以恢复。")
         }
     }
 

@@ -5,7 +5,7 @@ private let QUEUE_LABEL: [String: String] = ["queued": "排队中", "paused": "�
 
 private let STATUS_FILTERS: [(value: String, label: String)] = [
     ("all", "全部状态"), ("running", "运行中"), ("queued", "排队中"), ("done", "已完成"), ("waiting", "等待确认"),
-    ("needs-attention", "需要处理"), ("idle", "未完成"), ("font", "PDF 字体不对"), ("imported", "导入的历史项目"), ("readonly", "只读"),
+    ("needs-attention", "需要处理"), ("idle", "未完成"), ("font", "PDF 字体不对"), ("imported", "导入的旧项目"), ("readonly", "只读"),
     ("submitted", "已提交"), ("unsubmitted", "未提交"),
 ]
 
@@ -185,7 +185,7 @@ struct ProjectsView: View {
             .padding(.bottom, hasTopContent ? 10 : 0)
             table
         }
-        .navigationTitle("历史项目")
+        .navigationTitle("项目")
         .onChange(of: model.devSelection) { _, next in if let next { selection = next; checkMode = next.count > 1 } }
         // 搜索、筛选后看不见的项目不再算选中，批量操作只作用于列表里看得到的（和访达一样）
         .onChange(of: selection.isEmpty) { _, empty in if empty { checkMode = false } }
@@ -233,7 +233,7 @@ struct ProjectsView: View {
             Button("只从列表移除") { remove(removeTargets ?? [], deleteFolder: false) }
             Button("移除并把文件夹移到废纸篓", role: .destructive) { remove(removeTargets ?? [], deleteFolder: true) }
         } message: {
-            Text("\((removeTargets?.count ?? 0) > 1 ? "\(nameList(removeTargets ?? []))\n\n" : "")只从列表移除：项目文件夹留在原处，以后可以在「设置 → 导入历史项目」里重新导入。\n移到废纸篓：项目文件夹（截图、文档、交付包）一起移到废纸篓，清空废纸篓前都可以恢复。")
+            Text("\((removeTargets?.count ?? 0) > 1 ? "\(nameList(removeTargets ?? []))\n\n" : "")只从列表移除：项目文件夹留在原处，以后可以在「设置 → 导入项目」里重新导入。\n移到废纸篓：项目文件夹（截图、文档、交付包）一起移到废纸篓，清空废纸篓前都可以恢复。")
         }
         .confirmationDialog(startPlan.map { "开始处理 \($0.dirs.count) 个项目？" } ?? "", isPresented: Binding(get: { startPlan != nil }, set: { if !$0 { startPlan = nil } }), titleVisibility: .visible) {
             Button("开始处理 \(startPlan?.dirs.count ?? 0) 个") { if let plan = startPlan { enqueue(plan.dirs) } }
@@ -338,7 +338,7 @@ struct ProjectsView: View {
         }
         .overlay {
             if model.projectsLoaded && model.projects.isEmpty {
-                EmptyHint(title: "还没有项目", systemImage: "square.grid.2x2", message: "在左边「新建项目」里创建；以前用 skill 做过的项目可以在「设置 → 导入历史项目」里接进来。")
+                EmptyHint(title: "还没有项目", systemImage: "square.grid.2x2", message: "点工具栏「新建」或按 ⌘N 创建；以前用 skill 做过的项目可以在「设置 → 导入项目」里接进来。")
             } else if model.projectsLoaded && rows.isEmpty {
                 EmptyHint(title: "没有符合条件的项目", systemImage: "magnifyingglass")
             }
@@ -555,6 +555,11 @@ struct ProjectsView: View {
 
     @ToolbarContentBuilder
     var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button { model.showNewProject() } label: { Label("新建", systemImage: "plus") }
+                .buttonStyle(.primary)
+                .disabled(model.trialMeasure)
+        }
         ToolbarItem(placement: .navigation) {
             Picker("状态", selection: Binding(get: { model.listStatus }, set: { model.listStatus = $0 })) {
                 ForEach(STATUS_FILTERS, id: \.value) { Text($0.label).tag($0.value) }
@@ -635,7 +640,7 @@ struct ProjectsView: View {
         var skipped: [String] = []
         for row in targets {
             if row.submitted { skipped.append("· \(row.name)（已提交，只读）") }
-            else if row.historyReadOnly { skipped.append("· \(row.name)（只读的历史项目）") }
+            else if row.historyReadOnly { skipped.append("· \(row.name)（只读的旧项目）") }
             else if row.status == "running" { skipped.append("· \(row.name)（正在运行）") }
             else if row.queue?["status"]?.string == "queued" { skipped.append("· \(row.name)（已经在排队）") }
             else { dirs.append(row.dir) }

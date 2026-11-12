@@ -66,7 +66,7 @@ struct EditorTab: View {
     var body: some View {
         Group {
             if data.screens.isEmpty && data.content == nil {
-                EmptyHint(title: data.readOnly ? "这个历史项目没有截图源文件" : "规划完成后会在这里显示截图和说明", systemImage: "rectangle.split.2x1")
+                EmptyHint(title: data.readOnly ? "这个旧项目没有截图源文件" : "规划完成后会在这里显示截图和说明", systemImage: "rectangle.split.2x1")
                     .frame(minHeight: 300)
             } else {
                 VStack(alignment: .leading, spacing: 16) {
