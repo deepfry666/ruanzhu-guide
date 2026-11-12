@@ -1,0 +1,12 @@
+.DS_Store
+xcuserdata/
+.build/
+.swiftpm/
+native/build/
+native/dist/
+native/StudioCore/.build/
+
+# 只在本机保留，不进仓库
+native/StudioCore/Tests/
+AGENTS.md
+CLAUDE.md
