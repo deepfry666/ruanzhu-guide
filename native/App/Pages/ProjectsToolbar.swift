@@ -60,6 +60,8 @@ extension ProjectsView {
                 Text("状态").tag("status")
                 Text("最近构建").tag("build")
             }.pickerStyle(.menu)
+        }
+        ToolbarItem(placement: .navigation) {
             Button(sortAscending ? "升序" : "降序", systemImage: sortAscending ? "arrow.up" : "arrow.down") { sortAscending.toggle() }
                 .labelStyle(.titleAndIcon)
         }

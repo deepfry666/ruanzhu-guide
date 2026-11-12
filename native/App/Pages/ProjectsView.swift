@@ -72,7 +72,10 @@ struct ProjectsView: View {
             .padding(.horizontal, Spacing.xl)
             .padding(.top, Spacing.md)
             .padding(.bottom, hasTopContent ? Spacing.md : 0)
-            table
+            // 项目页覆盖列表时卸载表格，避免离开导航栈后 AppKit 仍回调已销毁的行。
+            if model.projectPath.isEmpty {
+                table
+            }
         }
         .navigationTitle("项目")
         .onChange(of: model.projectsLoaded, initial: true) { _, loaded in
