@@ -73,7 +73,6 @@ final class ProjectSignal {
 final class AppModel {
     enum Phase: Equatable {
         case starting
-        case askMigration
         case ready
         case failed(String)
     }
@@ -137,7 +136,6 @@ final class AppModel {
     var codeFailed: [String: String] = [:]
     var toasts: [Toast] = []
     var alert: AlertItem?
-    var migrationSummary: JSON?
 
     // 开发自检（DevControl）
     var devProjectTab: ProjectTab?
@@ -187,25 +185,6 @@ final class AppModel {
         guard !started else { return }
         started = true
         DevControl.shared.start(self)
-        if ElectronMigration.isFresh(dataDir) && ElectronMigration.available() {
-            phase = .askMigration
-            return
-        }
-        await launchCore()
-    }
-
-    /// 第一次打开时选择是否从 Electron 旧版导入。
-    func finishMigrationChoice(importData: Bool) async {
-        if importData {
-            do {
-                let secrets: SecretStore = memorySecrets ? memoryStore : LocalSecrets.open(dataDir: dataDir)
-                migrationSummary = try await ElectronMigration.migrate(to: dataDir, secrets: secrets, readSecrets: !memorySecrets)
-            } catch {
-                alert = AlertItem(title: "导入失败", message: messageOf(error))
-            }
-        } else {
-            try? ElectronMigration.declineFirstRun(dataDir)
-        }
         await launchCore()
     }
 
@@ -225,43 +204,6 @@ final class AppModel {
             requestNotificationPermission()
         } catch {
             phase = .failed(messageOf(error))
-        }
-    }
-
-    /// 导入 Electron 旧版数据后重建核心（核心会缓存设置和记录）。
-    func importFromElectron() async {
-        guard let core else { return }
-        if hasBackgroundWork || !core.pipeline.runningProjects().isEmpty {
-            alert = AlertItem(title: "有任务正在运行", message: "等项目、批量队列和 PDF 导出都结束（或先停止）后再导入。")
-            return
-        }
-        do {
-            let summary = try await ElectronMigration.migrate(to: dataDir, secrets: core.secrets, readSecrets: !memorySecrets)
-            let failed = summary["secretsFailed"].items.count
-            let info = NSAlert()
-            info.messageText = "已从 Electron 旧版导入"
-            info.informativeText = "生图线路 \(summary["providers"]?.int ?? 0) 条、大模型厂商 \(summary["vendors"]?.int ?? 0) 个、项目 \(summary["projects"]?.int ?? 0) 个、密钥 \(summary["secrets"]?.int ?? 0) 个。\(failed > 0 ? "\n有 \(failed) 个密钥没能解开，请在「模型与线路」里重新填写。" : "")\nElectron 旧版的数据没有改动。\n\n软件会重新打开，让导入的数据生效。"
-            info.addButton(withTitle: "重新打开")
-            info.runModal()
-            relaunch()
-        } catch {
-            alert = AlertItem(title: "导入失败", message: messageOf(error))
-        }
-    }
-
-    /// 退出并重新打开自己（导入数据后用：同一个进程里不能有两套后台任务同时读写数据）。
-    func relaunch() {
-        let script = Path.join(NSTemporaryDirectory(), "manual-studio-relaunch-\(randomHex(4)).sh")
-        let env = ProcessInfo.processInfo.environment.filter { ["MS_DATA_DIR", "MS_TEST_MEMORY_SECRETS", "MS_DEV_CONTROL"].contains($0.key) }
-        do {
-            try FS.write(script, Updater.relaunchScript(pid: ProcessInfo.processInfo.processIdentifier, target: Bundle.main.bundlePath, relaunchEnv: env))
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = [script]
-            try process.run()
-            NSApp.terminate(nil)
-        } catch {
-            alert = AlertItem(title: "请手动重新打开软件", message: messageOf(error))
         }
     }
 

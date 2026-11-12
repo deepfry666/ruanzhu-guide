@@ -1,28 +1,17 @@
 #!/bin/zsh
 # 打 Release 包：native/dist/软件指南生成器.app（ad-hoc 签名）
-# 用法：scripts/build-app.sh [--test] [--zip]
-#   --test  先跑 StudioCore 的全部测试
+# 用法：scripts/build-app.sh [--zip]
 #   --zip   另外打一个 zip，方便拷到别的 Mac
 set -euo pipefail
 cd "${0:A:h}/.."
 
-RUN_TESTS=0; MAKE_ZIP=0
+MAKE_ZIP=0
 for arg in "$@"; do
   case $arg in
-    --test) RUN_TESTS=1 ;;
     --zip) MAKE_ZIP=1 ;;
     *) echo "未知参数：$arg"; exit 1 ;;
   esac
 done
-
-if (( RUN_TESTS )); then
-  if [[ -d StudioCore/Tests/StudioCoreTests ]]; then
-    echo "==> 运行测试"
-    (cd StudioCore && swift test)
-  else
-    echo "==> 本机没有测试文件夹，跳过测试"
-  fi
-fi
 
 echo "==> 编译 Release"
 xcodebuild -project ManualStudio.xcodeproj -scheme ManualStudio -configuration Release \

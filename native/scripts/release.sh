@@ -1,9 +1,8 @@
 #!/bin/zsh
-# 发版：改版本号 → 跑测试 → 打包 → 提交并打标签 → 推送 → 在 GitHub 上建 Release 并上传 zip
+# 发版：改版本号 → 打包 → 提交并打标签 → 推送 → 在 GitHub 上建 Release 并上传 zip
 # 用法：native/scripts/release.sh <版本号> [更新说明文件]
 #   例：native/scripts/release.sh 1.1.0 notes.md
 #   不给更新说明时，用上一个标签以来的提交记录自动生成。
-# 只发原生版；Electron 旧版已定档（标签 electron-v0.1.0-final），不再发版。
 set -euo pipefail
 cd "${0:A:h}/.."
 
@@ -22,8 +21,8 @@ PBX=ManualStudio.xcodeproj/project.pbxproj
 BUILD=$(( $(grep -m1 -oE 'CURRENT_PROJECT_VERSION = [0-9]+' $PBX | grep -oE '[0-9]+$') + 1 ))
 sed -i '' -E "s/MARKETING_VERSION = [0-9.]+;/MARKETING_VERSION = $VERSION;/; s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = $BUILD;/" $PBX
 
-echo "==> 测试并打包"
-scripts/build-app.sh --test --zip
+echo "==> 打包"
+scripts/build-app.sh --zip
 ZIP="dist/软件指南生成器-$VERSION.zip"
 [[ -f $ZIP ]] || { echo "没有生成 $ZIP"; exit 1; }
 

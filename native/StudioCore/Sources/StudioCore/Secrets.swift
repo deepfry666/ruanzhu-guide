@@ -1,6 +1,5 @@
 import Foundation
 import CryptoKit
-import CommonCrypto
 import Security
 
 /// 密钥存储。密钥永远不会写进项目目录或日志。
@@ -225,62 +224,5 @@ public enum LocalSecrets {
             try? FS.writeJSONAtomic(file, .object(converted), mode: 0o600)
         }
         return FileSecrets(dataDir: dataDir, cipher: cipher)
-    }
-}
-
-/// 读 Electron 版用 safeStorage 加密的密钥（迁移用）。
-/// Chromium 在 macOS 上的做法：钥匙串里存一个口令，PBKDF2-SHA1(口令, "saltysalt", 1003 次) 得到 128 位密钥，
-/// 密文 = "v10" + AES-128-CBC(IV 为 16 个空格)。
-public struct ElectronSafeStorage: Sendable {
-    public let password: Data
-
-    public init(password: Data) { self.password = password }
-
-    /// 从钥匙串读 Electron 版的口令（系统会弹窗询问是否允许）。
-    public static func fromKeychain(appName: String = "软件指南生成器") -> ElectronSafeStorage? {
-        guard let password = Keychain.read(service: "\(appName) Safe Storage", account: "\(appName) Key") else { return nil }
-        return ElectronSafeStorage(password: password)
-    }
-
-    func derivedKey() -> Data {
-        var key = Data(count: 16)
-        let salt = Data("saltysalt".utf8)
-        key.withUnsafeMutableBytes { keyBytes in
-            password.withUnsafeBytes { passwordBytes in
-                salt.withUnsafeBytes { saltBytes in
-                    _ = CCKeyDerivationPBKDF(
-                        CCPBKDFAlgorithm(kCCPBKDF2),
-                        passwordBytes.baseAddress?.assumingMemoryBound(to: CChar.self), password.count,
-                        saltBytes.baseAddress?.assumingMemoryBound(to: UInt8.self), salt.count,
-                        CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA1), 1003,
-                        keyBytes.baseAddress?.assumingMemoryBound(to: UInt8.self), 16)
-                }
-            }
-        }
-        return key
-    }
-
-    /// base64 的 safeStorage 密文 → 明文。
-    public func decrypt(_ base64: String) throws -> String {
-        guard let data = Data(base64Encoded: base64), data.count > 3, data.prefix(3) == Data("v10".utf8) else { throw StudioError("不是 safeStorage 密文") }
-        let body = data.dropFirst(3)
-        let key = derivedKey()
-        let iv = Data(repeating: 0x20, count: 16)
-        var output = Data(count: body.count + kCCBlockSizeAES128)
-        var written = 0
-        let outputCount = output.count
-        let status = output.withUnsafeMutableBytes { outBytes in
-            body.withUnsafeBytes { inBytes in
-                key.withUnsafeBytes { keyBytes in
-                    iv.withUnsafeBytes { ivBytes in
-                        CCCrypt(CCOperation(kCCDecrypt), CCAlgorithm(kCCAlgorithmAES), CCOptions(kCCOptionPKCS7Padding),
-                                keyBytes.baseAddress, kCCKeySizeAES128, ivBytes.baseAddress,
-                                inBytes.baseAddress, body.count, outBytes.baseAddress, outputCount, &written)
-                    }
-                }
-            }
-        }
-        guard status == kCCSuccess else { throw StudioError("解密失败（\(status)）") }
-        return String(decoding: output.prefix(written), as: UTF8.self)
     }
 }

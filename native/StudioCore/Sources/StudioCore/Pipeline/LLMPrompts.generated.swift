@@ -1,4 +1,4 @@
-// 由 native/scripts/generate-from-electron.mjs 从 Electron 版原样生成，不要手改。
+// 固定内容，最早从 Electron 版原样移植过来；现在直接在这里维护。
 
 import Foundation
 

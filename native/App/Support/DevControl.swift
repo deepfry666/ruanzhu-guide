@@ -41,8 +41,6 @@ final class DevControl {
         case "feedback": model.devFeedbackOpen = value == "open"
         case "newMode": model.devNewMode = value
         case "select": model.devSelection = value == "none" ? [] : Set(value.split(separator: "|").map(String.init))
-        case "migrate":
-            if model.phase == .askMigration { Task { await model.finishMigrationChoice(importData: value == "import") } }
         case "appearance":
             NSApp.appearance = value == "dark" ? NSAppearance(named: .darkAqua) : value == "light" ? NSAppearance(named: .aqua) : nil
         case "size":

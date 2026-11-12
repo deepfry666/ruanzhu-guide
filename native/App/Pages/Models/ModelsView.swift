@@ -63,8 +63,6 @@ struct ProvidersView: View {
         .task(id: model.settingsRevision) { await reloadStatuses() }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button { importLegacy() } label: { Label("从旧 skill 导入", systemImage: "square.and.arrow.down") }
-                    .help("从旧 skill 导入")
                 Button { editing = newProviderFromPreset("openai-sync", id: "", name: "") } label: { Label("添加线路", systemImage: "plus") }
                     .buttonStyle(.glassProminent)
                     .help("添加线路")
@@ -207,20 +205,6 @@ struct ProvidersView: View {
                 await reloadAll()
             } catch {
                 probe = nil
-                model.toast(.error, messageOf(error))
-            }
-        }
-    }
-
-    func importLegacy() {
-        Task {
-            do {
-                guard let result = try await model.core?.importLegacyProviders() else { return }
-                let imported = result["imported"].items.map(\.jsString)
-                let skipped = result["skipped"].items.map(\.jsString)
-                model.alert = AlertItem(title: "已从旧 skill 导入线路", message: "导入：\(imported.isEmpty ? "无" : imported.joined(separator: "、"))\(skipped.isEmpty ? "" : "\n跳过：\(skipped.joined(separator: "；"))")\n只读取了 ~/.codex/software-manual-image-providers.json，没有修改它；密钥已加密保存在本软件里。")
-                await reloadAll()
-            } catch {
                 model.toast(.error, messageOf(error))
             }
         }

@@ -11,8 +11,6 @@ struct RootView: View {
             case .starting:
                 ProgressView("正在启动…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .askMigration:
-                MigrationWelcomeView()
             case .failed(let message):
                 ContentUnavailableView {
                     Label("启动失败", systemImage: "exclamationmark.triangle")
@@ -142,52 +140,5 @@ struct PendingJobsNotice: View {
             .glassEffect(.regular, in: .rect(cornerRadius: 20))
             .padding(20)
         }
-    }
-}
-
-/// 第一次打开：可以把 Electron 旧版的设置、线路、密钥和项目一次导入。
-struct MigrationWelcomeView: View {
-    @Environment(AppModel.self) private var model
-    @State private var busy = false
-
-    var body: some View {
-        VStack(spacing: 22) {
-            Image("Logo").resizable().frame(width: 96, height: 96)
-            VStack(spacing: 8) {
-                Text("欢迎使用软件指南生成器").font(.largeTitle.weight(.semibold))
-                Text("发现了 Electron 旧版的数据，可以一次导入，接着用。").foregroundStyle(.secondary)
-            }
-            VStack(alignment: .leading, spacing: 10) {
-                Label("设置、生图线路、大模型和各步骤用的模型", systemImage: "gearshape.2")
-                Label("密钥（需要在系统弹窗里点「允许」读取 Electron 旧版的钥匙串项）", systemImage: "key")
-                Label("项目列表和每个项目的进度、用时、修改意见", systemImage: "square.grid.2x2")
-                Label("调用记录（补发线按历史耗时计算）", systemImage: "chart.bar")
-            }
-            .padding(18)
-            .frame(width: 520, alignment: .leading)
-            .cardBackground()
-            Text("项目文件夹新旧两版共用，不复制、不改动；Electron 旧版的数据只读取，不修改。")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 12) {
-                Button("不导入，全新开始") {
-                    busy = true
-                    Task { await model.finishMigrationChoice(importData: false) }
-                }
-                .buttonStyle(.glass)
-                .controlSize(.large)
-                Button {
-                    busy = true
-                    Task { await model.finishMigrationChoice(importData: true) }
-                } label: {
-                    if busy { ProgressView().controlSize(.small) } else { Text("导入 Electron 旧版的数据") }
-                }
-                .buttonStyle(.glassProminent)
-                .controlSize(.large)
-            }
-            .disabled(busy)
-        }
-        .padding(40)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

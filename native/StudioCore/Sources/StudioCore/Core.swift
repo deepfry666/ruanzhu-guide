@@ -240,10 +240,6 @@ public final class StudioCore: @unchecked Sendable {
 
     public func resetProviderHealth(_ id: String) async { await health.reset(id) }
 
-    public func importLegacyProviders(file: String? = nil) async throws -> JSON {
-        if let file { return try await StudioCore_importLegacyProviders(settingsStore: settingsStore, secrets: secrets, file: file) }
-        return try await StudioCore_importLegacyProviders(settingsStore: settingsStore, secrets: secrets)
-    }
 
     // MARK: - 大模型
 
@@ -615,7 +611,7 @@ public final class StudioCore: @unchecked Sendable {
         return try StudioCore_scanWorkspace(workspaceDir ?? settings.workspaceDir) { store.exists($0) }
     }
 
-    public func importProjects(_ dirs: [String]) async throws -> (imported: [String], failed: [String], timings: Int) {
+    public func importProjects(_ dirs: [String]) async throws -> (imported: [String], failed: [String]) {
         var imported: [String] = []
         var failed: [String] = []
         for dir in dirs {
@@ -634,9 +630,7 @@ public final class StudioCore: @unchecked Sendable {
                 failed.append("\(Path.basename(dir))：\(messageOf(error))")
             }
         }
-        let settings = try await settingsStore.get()
-        let timings = await importLegacyTimings(settings.workspaceDir, callLog)
-        return (imported, failed, timings)
+        return (imported, failed)
     }
 
     public func renameSoftware(_ dir: String, _ newName: String) async throws -> String {
@@ -806,9 +800,6 @@ public final class StudioCore: @unchecked Sendable {
 }
 
 // 和同名方法区分开的自由函数别名
-func StudioCore_importLegacyProviders(settingsStore: SettingsStore, secrets: SecretStore, file: String = Path.join(NSHomeDirectory(), ".codex", "software-manual-image-providers.json")) async throws -> JSON {
-    try await importLegacyProviders(settingsStore: settingsStore, secrets: secrets, file: file)
-}
 func StudioCore_scanWorkspace(_ dir: String, isManaged: (String) -> Bool) throws -> [JSON] { try scanWorkspace(dir, isManaged: isManaged) }
 func StudioCore_planExport(dirs: [String], targetDir: String, projectStore: ProjectStore, groupName: String) throws -> JSON {
     try planExport(dirs: dirs, targetDir: targetDir, projectStore: projectStore, groupName: groupName)

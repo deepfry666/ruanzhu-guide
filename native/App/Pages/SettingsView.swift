@@ -57,7 +57,7 @@ struct GeneralSettings: View {
                         if let dir = Panels.chooseDirectory("选择项目存放位置", at: model.settings.workspaceDir) { model.saveSettings(["workspaceDir": .string(dir)]) }
                     }
                 }
-                SettingsRow(label: "软件数据", info: "设置、加密的密钥、调用记录和项目状态。和 Electron 旧版的数据分开存放。") {
+                SettingsRow(label: "软件数据", info: "设置、加密的密钥、调用记录和项目状态。") {
                     PathText(path: model.dataDir).frame(maxWidth: 360, alignment: .trailing)
                     Button("在访达中显示") { model.reveal(model.dataDir) }.buttonStyle(.borderless)
                 }
@@ -225,23 +225,9 @@ struct ImportPanel: View {
     @State private var selection = Set<String>()
     @State private var scanning = false
     @State private var busy = false
-    @State private var migrateConfirm = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if ElectronMigration.available() {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "arrow.down.doc").font(.title2).foregroundStyle(.blue)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("从 Electron 旧版导入").fontWeight(.semibold)
-                        Text(migrationNote).font(.callout).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("导入 Electron 旧版的数据…") { migrateConfirm = true }.buttonStyle(.glass)
-                }
-                .padding(14)
-                .cardBackground(cornerRadius: 12)
-            }
             HStack {
                 Text("工作区里旧 skill 做过的项目（只登记，不改动文件）").font(.headline)
                 Spacer()
@@ -273,18 +259,6 @@ struct ImportPanel: View {
         }
         .padding(20)
         .task { scan(nil) }
-        .confirmationDialog("从 Electron 旧版导入数据？", isPresented: $migrateConfirm, titleVisibility: .visible) {
-            Button("导入") { Task { await model.importFromElectron() } }
-        } message: {
-            Text("会用 Electron 旧版的设置（线路、大模型、工作区、代码来源等）替换这里的设置，并合并项目列表和调用记录。读取密钥时系统会询问是否允许访问钥匙串。Electron 旧版的数据不会改动。")
-        }
-    }
-
-    var migrationNote: String {
-        if let record = FS.readJSONQuiet(Path.join(model.dataDir, "migrated-from-electron.json")), let at = record["at"]?.string {
-            return record["declined"].isTruthy ? "第一次打开时选择了不导入（\(formatTime(at))）。设置、线路、密钥、项目列表和调用记录可以随时导入。" : "上次导入：\(formatTime(at))。再次导入会合并新增的项目和记录。"
-        }
-        return "把 Electron 旧版的设置、线路、密钥、项目列表和调用记录导入进来。"
     }
 
     func scan(_ dir: String?) {
