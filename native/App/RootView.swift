@@ -20,7 +20,13 @@ struct RootView: View {
                     Button("重试") { Task { await model.launchCore() } }
                 }
             case .ready:
-                MainSplitView()
+                if model.trialMeasure {
+                    // 保留列表滚动、筛选供测量；所有修改入口均无核心服务可调用。
+                    NavigationStack { ProjectsView() }
+                        .overlay(alignment: .top) { Text("试用 · 测量模式（仅列表）").bold() }
+                } else {
+                    MainSplitView()
+                }
             }
         }
         .overlay(alignment: .top) { ToastOverlay(toasts: model.toasts) }
@@ -89,7 +95,7 @@ struct SidebarView: View {
                         .resizable()
                         .frame(width: 30, height: 30)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("软件指南生成器").font(.headline).foregroundStyle(.primary)
+                        Text(model.displayName).font(.headline).foregroundStyle(.primary)
                         Text("截图 · 文案 · 交付包").font(.caption).foregroundStyle(.secondary)
                     }
                 }

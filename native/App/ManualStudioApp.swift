@@ -10,7 +10,7 @@ struct ManualStudioApp: App {
 
     var body: some Scene {
         // 只开一个窗口：两个窗口同时写同一份数据会出错
-        Window("软件指南生成器", id: "main") {
+        Window(AppModel.isTrial ? "软件指南生成器 试用" : "软件指南生成器", id: "main") {
             RootView()
                 .environment(model)
                 .environment(updater)

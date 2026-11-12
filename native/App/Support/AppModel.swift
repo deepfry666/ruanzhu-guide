@@ -81,6 +81,9 @@ final class AppModel {
     var core: StudioCore?
     /// 开发自检：MS_DATA_DIR 换一个数据目录，MS_TEST_MEMORY_SECRETS 密钥只放内存（不碰钥匙串）
     let dataDir = ProcessInfo.processInfo.environment["MS_DATA_DIR"] ?? nativeDataDir()
+    static let isTrial = Bundle.main.bundleIdentifier?.hasSuffix(".trial") == true
+    let trialMeasure = ProcessInfo.processInfo.environment["MS_TRIAL_MEASURE"] == "1"
+    var displayName: String { Self.isTrial ? "软件指南生成器 试用" : "软件指南生成器" }
     let memorySecrets = ProcessInfo.processInfo.environment["MS_TEST_MEMORY_SECRETS"] != nil
     /// 测试模式下导入和 core 共用同一份内存密钥
     private let memoryStore = MemorySecrets()
@@ -179,18 +182,40 @@ final class AppModel {
     // MARK: - 启动
 
     private var started = false
+    @ObservationIgnored private var trialTitleObserver: NSObjectProtocol?
+
+    private func installTrialTitle() {
+        guard trialTitleObserver == nil else { return }
+        trialTitleObserver = NotificationCenter.default.addObserver(forName: NSWindow.didUpdateNotification, object: nil, queue: .main) { notification in
+            guard let window = notification.object as? NSWindow else { return }
+            MainActor.assumeIsolated {
+                guard window.canBecomeMain, !window.title.contains("试用") else { return }
+                window.title = "试用 · " + window.title
+            }
+        }
+    }
 
     func start() async {
         // 关窗后从程序坞重新打开时 RootView 会再触发一次，不能再建一个 core
         guard !started else { return }
         started = true
-        DevControl.shared.start(self)
+        if !Self.isTrial { DevControl.shared.start(self) }
         await launchCore()
     }
 
     func launchCore() async {
         phase = .starting
         do {
+            if Self.isTrial {
+                let env = ProcessInfo.processInfo.environment
+                guard env["MS_TRIAL"] == "1", env["MS_DATA_DIR"] != nil else {
+                    throw StudioError("请通过 trial.sh 启动试用版")
+                }
+                try TrialData.prepare(dataDir, measure: trialMeasure, reset: env["MS_TRIAL_RESET"] == "1",
+                                      count: Int(env["MS_TRIAL_COUNT"] ?? "3") ?? 3,
+                                      selected: (env["MS_TRIAL_PROJECTS"] ?? "").split(separator: "\n").map(String.init))
+                installTrialTitle()
+            }
             let core = try await StudioCore(dataDir: dataDir, secrets: memorySecrets ? memoryStore : nil, appVersion: appVersion, onEvent: { [weak self] event in
                 Task { @MainActor in self?.handle(event) }
             })
@@ -200,7 +225,8 @@ final class AppModel {
             reloadBatch()
             reloadPendingJobs()
             phase = .ready
-            Task { await core.start() }
+            if Self.isTrial { DevControl.shared.start(self) }
+            if !Self.isTrial { Task { await core.start() } }
             requestNotificationPermission()
         } catch {
             phase = .failed(messageOf(error))
@@ -437,11 +463,13 @@ final class AppModel {
     // MARK: - 导航
 
     func openProject(_ dir: String) {
+        guard !trialMeasure else { return }
         section = .projects
         projectPath = [dir]
     }
 
     func go(_ item: SidebarItem, tab: String? = nil) {
+        guard !trialMeasure || item == .projects else { return }
         section = item
         if item == .models, let tab { modelsTab = tab }
         if item == .settings, let tab { settingsTab = tab }

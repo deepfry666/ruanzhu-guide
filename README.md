@@ -41,3 +41,9 @@ scripts/build-app.sh --zip     # 生成 dist/软件指南生成器.app 和 zip
 ```
 
 也可以用 Xcode 打开 `native/ManualStudio.xcodeproj` 开发。发版：`native/scripts/release.sh <版本号> [更新说明文件]`。
+
+### 试用环境
+
+运行 `native/scripts/trial.sh` 编译并启动独立的「试用」包，默认复制最近完成的 3 个项目；正式包与正式数据不变。用 `--count 5` 调整数量，或重复 `--project <项目文件夹>` 指定项目。`--name <字母数字名字>` 为并行任务隔离数据与偏好，`--reset` 重新准备该名字的副本（须先退出试用版）。
+
+验证前运行 `native/scripts/trial.sh --snapshot`，退出试用版后运行 `native/scripts/trial.sh --verify`，应输出「无差异」。核对覆盖正式数据目录与整个正式工作区；正式版自身的运行也可能产生差异。`--measure` 单独准备全部状态和索引（项目只建空文件夹），仅显示列表，不复制项目内容、密钥、队列或调用记录；不允许打开项目或执行步骤。不要直接打开构建包，始终用脚本启动；试用版禁用更新。试用数据含私人项目及密钥，保存在应用程序支持目录下独立的「试用」文件夹内，不要上传。AI 步骤仍须事先获得授权；本机验证只运行 receipt、build。

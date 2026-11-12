@@ -36,6 +36,17 @@ final class DevControl {
         case "modelsTab": model.modelsTab = value
         case "settingsTab": model.settingsTab = value
         case "open": model.openProject(value)
+        case "trialStep":
+            // 试用验收专用：明确限定到单个本机步骤，不会继续执行后续 AI 步骤。
+            guard AppModel.isTrial, !model.trialMeasure, ["receipt", "build"].contains(value),
+                  let core = model.core, let dir = model.projectPath.last,
+                  Path.isInside(TrialData.canonical(Path.join(model.dataDir, "workspace")), TrialData.canonical(dir)),
+                  model.projects.contains(where: { $0.dir == dir }) else { return }
+            Task {
+                let result = await core.run(dir, RunOptions(from: value, until: value, force: [value])).value
+                try? FS.writeJSONAtomic(Path.join(model.dataDir, "trial-step-result.json"),
+                                       .obj(["step": .string(value), "status": .string(result.status), "error": result.error.map(JSON.string) ?? .null]))
+            }
         case "back": model.projectPath = []
         case "projectTab": model.devProjectTab = ProjectTab(name: value)
         case "feedback": model.devFeedbackOpen = value == "open"

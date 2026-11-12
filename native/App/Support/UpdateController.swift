@@ -33,6 +33,7 @@ final class UpdateController {
 
     /// 启动后自动检查：关掉了自动检查、6 小时内查过、或用户跳过了这个版本，就不打扰。
     func checkOnLaunch() {
+        guard !AppModel.isTrial else { return }
         guard autoCheck, ProcessInfo.processInfo.environment["MS_DEV_CONTROL"] == nil || ProcessInfo.processInfo.environment["MS_UPDATE_TEST"] != nil else { return }
         let last = defaults.double(forKey: lastCheckKey)
         guard Date().timeIntervalSince1970 - last > 6 * 3600 else { return }
@@ -41,6 +42,7 @@ final class UpdateController {
 
     /// manual：菜单里手动检查，没有新版也要告诉用户。
     func check(manual: Bool) async {
+        guard !AppModel.isTrial else { return }
         guard phase != .checking, phase != .downloading else { return }
         phase = .checking
         do {
