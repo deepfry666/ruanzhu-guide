@@ -60,6 +60,30 @@ let TXT_LABELS: [(key: String, label: String)] = [
     ("sourceLines", "源程序量"),
 ]
 
+/// 列表唯一归属；搜索、时间与批次筛选不改变项目本身的分组。
+nonisolated enum ProjectGroup: String, CaseIterable {
+    case attention, inProgress, completed, submitted
+
+    var title: String {
+        switch self {
+        case .attention: "需要处理"
+        case .inProgress: "进行中"
+        case .completed: "已完成"
+        case .submitted: "已提交"
+        }
+    }
+}
+
+/// 优先级：已提交 → 实际运行/队列 → 异常 → 只读/完成。
+/// bundleUpdating 不改变归属，完成的项目更新交付包时仍归已完成。
+nonisolated func projectGroup(_ row: ProjectRow) -> ProjectGroup {
+    if row.submitted || row.status == "submitted" { return .submitted }
+    if row.status == "running" || ["queued", "paused", "running"].contains(row.queue.map { BatchQueueItem($0).status?.rawValue ?? "" } ?? "") { return .inProgress }
+    if row.status == "missing" || row.pdfFontProblem { return .attention }
+    if row.historyReadOnly || row.status == "readonly" || row.status == "done" { return .completed }
+    return .attention
+}
+
 /// 历史项目列表的一行。
 nonisolated struct ProjectRow: Identifiable, Hashable, Sendable {
     let json: JSON
@@ -90,6 +114,7 @@ nonisolated struct ProjectRow: Identifiable, Hashable, Sendable {
     func step(_ name: String) -> String { json["steps"]?[name]?.string ?? "pending" }
     var hasBundle: Bool { json["hasBundle"].isTruthy }
     var bundleFiles: Int? { json["bundleFiles"]?.int }
+    var bundleUpdating: Bool { json["bundleUpdating"].isTruthy }
     var pdfFontProblem: Bool { json["pdfFontProblem"].isTruthy }
     var timing: JSON? { json["timing"].truthyValue }
     var queue: JSON? { json["queue"].truthyValue }

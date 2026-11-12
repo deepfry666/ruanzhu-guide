@@ -103,7 +103,11 @@ final class DevControl {
         case "codebatch": model.devCodeBatch = value + "#" + String(Date().timeIntervalSince1970)
         case "namelist": model.devNameListText = value.replacingOccurrences(of: "|", with: "\n")
         case "query": model.listQuery = value
-        case "status": model.listStatus = value
+        case "status":
+            if let group = ProjectGroup(rawValue: value) ?? ProjectGroup.allCases.first(where: { $0.title == value }) { model.listStatus = group.rawValue }
+        case "queueDetails": model.devQueueExpanded = value == "1"
+        case "measureAll":
+            if model.trialMeasure { model.listOnly = value == "1" ? Set(model.projects.map(\.dir)) : nil }
         case "scroll": startScroll(value == "1")
         case "reload": Task { await model.reloadProjects() }
         case "listSnapshot":

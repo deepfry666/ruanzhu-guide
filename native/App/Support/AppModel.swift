@@ -95,7 +95,12 @@ final class AppModel {
     var navigationOrder: [String] = []
     // 历史项目列表的搜索和筛选：放在这里，切到别的页面再回来还在
     var listQuery = ""
-    var listStatus = "all"
+    var listStatus = UserDefaults.standard.string(forKey: "projects.group") ?? "" {
+        didSet {
+            if ProjectGroup(rawValue: listStatus) != nil { UserDefaults.standard.set(listStatus, forKey: "projects.group") }
+        }
+    }
+    var devQueueExpanded = false
     var listTime = "all"
     var listBatch = "all"
     var listPickedDate = Date()
