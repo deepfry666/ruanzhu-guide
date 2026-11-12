@@ -136,10 +136,16 @@ struct ProjectDetailView: View {
                 Banner(.warning, notice)
             }
             if let step = waitingStep, step != "build", !running {
-                Banner(.warning, data.stepMessage(step) ?? "等待确认") {
+                Banner(.warning, step == "plan" ? "界面规划已生成，请在「规划」里检查，确认后继续生图" : data.stepMessage(step) ?? "「\(UI_STEP_LABELS[step] ?? step)」等待确认") {
                     if step == "plan" {
-                        Button("确认规划，继续") { Task { _ = try? await model.core?.pipeline.confirmPlan(dir) } }
-                    } else { Button("去确认截图") { tab = .editor } }
+                        Button("确认规划，继续") {
+                            Task { await model.perform { _ = try await model.core?.pipeline.confirmPlan(dir) } }
+                        }
+                        .buttonStyle(.glassProminent)
+                    } else {
+                        Button("去确认截图") { tab = .editor }
+                            .buttonStyle(.glass)
+                    }
                 }
             }
             if let live {

@@ -16,8 +16,15 @@ actor BundleUpdates {
         }
     }
 
+    /// 同时最多跑 2 个项目的本机构建（LibreOffice 转 PDF 很吃资源），其余排队
+    private var building = 0
+    private let maxConcurrent = 2
+
     private func execute(_ dir: String, _ pipeline: Pipeline) async {
         active.insert(dir)
+        while building >= maxConcurrent { try? await Task.sleep(for: .milliseconds(300)) }
+        building += 1
+        defer { building -= 1 }
         repeat {
             again.remove(dir)
             if !(await pipeline.updateBundleLocally(dir)) { again.remove(dir); break }
