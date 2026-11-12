@@ -169,6 +169,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -196,7 +197,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
@@ -208,7 +209,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.7;
+				MARKETING_VERSION = 1.7.8;
 				PRODUCT_BUNDLE_IDENTIFIER = "local.manual-studio.native";
 				PRODUCT_NAME = "软件指南生成器";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -227,7 +228,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
@@ -239,7 +240,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.7;
+				MARKETING_VERSION = 1.7.8;
 				PRODUCT_BUNDLE_IDENTIFIER = "local.manual-studio.native";
 				PRODUCT_NAME = "软件指南生成器";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
