@@ -71,6 +71,10 @@ final class DevControl {
                 } catch { model.toast(.error, messageOf(error)) }
             }
         case "back": model.projectPath = []
+        // 试用版逐屏定位：从零开始的序号；仅改变选择，不执行修改或模型步骤。
+        case "editorScreen":
+            guard AppModel.isTrial else { return }
+            NotificationCenter.default.post(name: Notification.Name("trialEditorScreen"), object: value)
         case "projectTab": model.devProjectTab = ProjectTab(name: value)
         case "feedback": model.devFeedbackOpen = value == "open"
         case "newMode":

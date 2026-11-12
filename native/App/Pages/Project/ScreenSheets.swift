@@ -19,18 +19,18 @@ struct ScreenPreviewSheet: View {
 
     var body: some View {
         let gate = screen.gate
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
             HStack {
                 Text("\(screen.id) · \(screen.title)").font(.title2.weight(.semibold))
                 Spacer()
                 Button("关闭") { dismiss() }.keyboardShortcut(.cancelAction).help("关闭（Esc 或空格）")
             }
-            HStack(alignment: .top, spacing: 20) {
+            HStack(alignment: .top, spacing: Spacing.xl) {
                 ScreenImage(path: screen.file, version: screen.mtime, maxPixel: 2000)
                     .frame(width: 340)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.large))
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: Spacing.md) {
                         SettingsGroup {
                             SettingsRow(label: "检查") { let tag = gateTag(gate); TagView(text: tag.0, tone: tag.1) }
                             SettingsRow(label: "线路") { Text("\(screen.state["providerName"]?.string ?? "—")\(screen.state["model"]?.string.map { "（\($0)）" } ?? "")") }
@@ -48,7 +48,7 @@ struct ScreenPreviewSheet: View {
                 }
             }
         }
-        .padding(22)
+        .padding(Spacing.xl)
         .frame(width: 960, height: 760)
         .onKeyPress(.space) { dismiss(); return .handled }
     }
@@ -61,20 +61,20 @@ struct PromptSheet: View {
     @State private var text = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Spacing.md) {
             Text("\(screen.id) 的生图提示词").font(.title2.weight(.semibold))
             Text("末尾的「不要渲染软件名」禁令由程序自动保留，删掉也会被加回去。").foregroundStyle(.secondary)
             TextEditor(text: $text)
                 .font(.system(.callout, design: .monospaced))
-                .padding(6)
-                .cardBackground(cornerRadius: 8)
+                .padding(Spacing.xs)
+                .cardBackground(cornerRadius: Radius.small)
             HStack {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存") { onSave(text) }.buttonStyle(.primary).keyboardShortcut(.defaultAction)
             }
         }
-        .padding(22)
+        .padding(Spacing.xl)
         .frame(width: 820, height: 600)
         .onAppear { text = screen.prompt }
     }
@@ -86,7 +86,7 @@ struct AlternatesSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Spacing.md) {
             HStack {
                 Text("\(screen.id) 的备选图").font(.title2.weight(.semibold))
                 Spacer()
@@ -94,17 +94,17 @@ struct AlternatesSheet: View {
             }
             Text("另一条线路同时出的备选图，换上后要重新检查。").foregroundStyle(.secondary)
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 16)], spacing: 16) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: Spacing.lg)], spacing: Spacing.lg) {
                     ForEach(screen.alternates, id: \.self) { item in
-                        VStack(spacing: 8) {
-                            ScreenImage(path: item["file"]?.string).frame(height: 260).clipShape(RoundedRectangle(cornerRadius: 10))
+                        VStack(spacing: Spacing.sm) {
+                            ScreenImage(path: item["file"]?.string).frame(height: 260).clipShape(RoundedRectangle(cornerRadius: Radius.medium))
                             Button("用这张") { onUse(item["file"]?.string ?? "") }
                         }
                     }
                 }
             }
         }
-        .padding(22)
+        .padding(Spacing.xl)
         .frame(width: 760, height: 560)
     }
 }
@@ -116,7 +116,7 @@ struct ScreenHistorySheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Spacing.md) {
             HStack {
                 Text("\(screen.id) 以前的截图").font(.title2.weight(.semibold))
                 Spacer()
@@ -124,14 +124,14 @@ struct ScreenHistorySheet: View {
             }
             Text("换回后要重新检查，这一屏的说明会按换回的截图重写（人工改过的除外）。现在这张也会存进来，随时能再换。").foregroundStyle(.secondary)
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 16)], spacing: 16) {
-                    VStack(spacing: 8) {
-                        ScreenImage(path: screen.file, version: screen.mtime).frame(height: 280).clipShape(RoundedRectangle(cornerRadius: 10))
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: Spacing.lg)], spacing: Spacing.lg) {
+                    VStack(spacing: Spacing.sm) {
+                        ScreenImage(path: screen.file, version: screen.mtime).frame(height: 280).clipShape(RoundedRectangle(cornerRadius: Radius.medium))
                         Text("现在用的").font(.caption.weight(.semibold))
                     }
                     ForEach(Array(screen.history.enumerated()), id: \.offset) { _, item in
-                        VStack(spacing: 8) {
-                            ScreenImage(path: item["file"]?.string).frame(height: 280).clipShape(RoundedRectangle(cornerRadius: 10))
+                        VStack(spacing: Spacing.sm) {
+                            ScreenImage(path: item["file"]?.string).frame(height: 280).clipShape(RoundedRectangle(cornerRadius: Radius.medium))
                             Text(formatTime(item["at"]?.string)).font(.caption).foregroundStyle(.secondary)
                             Button("换回这张") { onUse(item["file"]?.string ?? "") }
                         }
@@ -139,7 +139,7 @@ struct ScreenHistorySheet: View {
                 }
             }
         }
-        .padding(22)
+        .padding(Spacing.xl)
         .frame(width: 820, height: 620)
     }
 }

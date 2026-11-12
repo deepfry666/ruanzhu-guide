@@ -1,7 +1,7 @@
 import StudioCore
 import SwiftUI
 
-/// 编辑：和最终指南一样，一屏一行，左边截图、右边说明。在哪里看到问题就在哪里改：
+/// 编辑：左侧选择截图，右侧查看大图并修改说明。
 /// - 文字直接改，自动保存，每处都能从「历史」换回以前的文字；
 /// - 每一行下面写「要怎么改」，点「改图」或「只改文字」，不用先攒清单再整理；
 /// - 截图可以重新生成、换回以前的截图、换备选图；封面介绍和设计说明同样直接改。
@@ -9,7 +9,7 @@ struct EditorTab: View {
     let data: ProjectData
     let running: Bool
     let onChanged: () -> Void
-    @Environment(AppModel.self) private var model
+    @Environment(AppModel.self) var model
 
     struct Section: Equatable {
         var title: String
@@ -17,25 +17,25 @@ struct EditorTab: View {
     }
 
     // 文字：输入框里的内容和最近一次读到 / 保存的内容；不同就是还没保存的修改
-    @State private var overview = ""
-    @State private var titles: [String: String] = [:]
-    @State private var texts: [String: String] = [:]
-    @State private var sections: [Section] = []
-    @State private var baseOverview = ""
-    @State private var baseTitles: [String: String] = [:]
-    @State private var baseTexts: [String: String] = [:]
-    @State private var baseSections: [Section] = []
-    @State private var loadedKey = ""
-    @State private var saveState: SaveState = .idle
-    @State private var rewrite: (ids: [String], label: String)?
+    @State var overview = ""
+    @State var titles: [String: String] = [:]
+    @State var texts: [String: String] = [:]
+    @State var sections: [Section] = []
+    @State var baseOverview = ""
+    @State var baseTitles: [String: String] = [:]
+    @State var baseTexts: [String: String] = [:]
+    @State var baseSections: [Section] = []
+    @State var loadedKey = ""
+    @State var saveState: SaveState = .idle
+    @State var rewrite: (ids: [String], label: String)?
     // 每一行的「要怎么改」
-    @State private var changeRequests: [String: String] = [:]
+    @State var changeRequests: [String: String] = [:]
     // 截图的弹窗
-    @State private var preview: ScreenItem?
-    @State private var promptEdit: ScreenItem?
-    @State private var alternates: ScreenItem?
-    @State private var history: ScreenItem?
-    @State private var regenerate: ScreenItem?
+    @State var preview: ScreenItem?
+    @State var promptEdit: ScreenItem?
+    @State var alternates: ScreenItem?
+    @State var history: ScreenItem?
+    @State var regenerate: ScreenItem?
 
     enum SaveState: Equatable {
         case idle, saving, saved(Date), failed(String)
@@ -63,21 +63,38 @@ struct EditorTab: View {
         ]).serialized()
     }
 
+    @State var selectedScreen = ""
+
     var body: some View {
         Group {
             if data.screens.isEmpty && data.content == nil {
                 EmptyHint(title: data.readOnly ? "这个旧项目没有截图源文件" : "规划完成后会在这里显示截图和说明", systemImage: "rectangle.split.2x1")
                     .frame(minHeight: 300)
             } else {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: Spacing.lg) {
                     statusLine
-                    if data.content != nil { coverEditor }
-                    ForEach(Array(data.screens.enumerated()), id: \.element.id) { index, screen in
-                        screenRow(index, screen)
+                    HStack(alignment: .top, spacing: Spacing.xl) {
+                        screenshotList.frame(width: Metrics.sidebarWidth)
+                        VStack(alignment: .leading, spacing: Spacing.lg) {
+                            if selectedScreen == "overview" { coverEditor }
+                            else if selectedScreen == "design" { designEditor }
+                            else if let index = data.screens.firstIndex(where: { $0.id == selectedScreen }) ?? data.screens.indices.first {
+                                let screen = data.screens[index]
+                                AdaptiveColumns(breakpoint: Metrics.editorImageWidth * 2) {
+                                    screenColumn(screen)
+                                    textColumn(index, screen)
+                                }
+                                if !data.readOnly { changeBar(index, screen) }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if !sections.isEmpty { designEditor }
                 }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("trialEditorScreen"))) { note in
+            guard AppModel.isTrial, let value = note.object as? String, let index = Int(value), data.screens.indices.contains(index) else { return }
+            selectedScreen = data.screens[index].id
         }
         .onAppear(perform: syncFromContent)
         .onChange(of: contentKey) { _, _ in syncFromContent() }
@@ -138,294 +155,6 @@ struct EditorTab: View {
         } message: {
             Text("会覆盖现在的文字（包括你改过的部分）。现在的文字会存进「历史」，不满意可以换回来。想按要求改，在这一行下面写「要怎么改」再点「只改文字」。")
         }
-    }
-
-    // MARK: 顶部状态
-
-    var statusLine: some View {
-        HStack(spacing: 8) {
-            if data.submitted {
-                Text("已提交，只能查看；要修改请先取消已提交").foregroundStyle(.secondary)
-            } else if data.readOnly {
-                Text("只读项目，不能修改").foregroundStyle(.secondary)
-            } else if running {
-                Label("正在运行，跑完后才能修改", systemImage: "hourglass").foregroundStyle(.secondary)
-            } else {
-                switch saveState {
-                case .saving: ProgressView().controlSize(.small); Text("正在保存…").foregroundStyle(.secondary)
-                case .saved(let date): Label("已自动保存 \(date.formatted(date: .omitted, time: .shortened))", systemImage: "checkmark.circle").foregroundStyle(.secondary)
-                case .failed(let message): Label("没有保存：\(message)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
-                case .idle: Label("文字改了自动保存", systemImage: "checkmark.circle").foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text("保存后交付包约 3 秒自动更新；需要 AI 时请点「继续」").font(.callout).foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    // MARK: 封面介绍
-
-    var coverEditor: some View {
-        SettingsGroup(title: "封面介绍（也会写进 TXT 的【软件的主要功能】）", trailing: data.readOnly ? nil : AnyView(HStack(spacing: 10) {
-            historyMenu("overview") { overview = $0 }
-            Button("让大模型重写") { rewrite = (["overview"], "封面介绍") }.disabled(running)
-        })) {
-            VStack(alignment: .leading, spacing: 4) {
-                TextEditor(text: $overview).font(.body).frame(minHeight: 80).scrollContentBackground(.hidden).disabled(!editable)
-                HStack(spacing: 8) {
-                    Text("\(overview.jsTrimmed.jsLength) 字").font(.caption).foregroundStyle(.secondary)
-                    if Rx.test(#"图\s*[0-9]"#, overview) { warning("正文里不要写「图N」，图注会自动生成") }
-                }
-            }
-            .padding(12)
-        }
-    }
-
-    // MARK: 一屏一行
-
-    func screenRow(_ index: Int, _ screen: ScreenItem) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 18) {
-                screenColumn(screen).frame(width: 240)
-                textColumn(index, screen).frame(maxWidth: 640, alignment: .leading)
-            }
-            if !data.readOnly { changeBar(index, screen) }
-        }
-        .padding(14)
-        .cardBackground(cornerRadius: 14)
-    }
-
-    func screenColumn(_ screen: ScreenItem) -> some View {
-        let gate = screen.gate
-        let tag = gateTag(gate)
-        return VStack(alignment: .leading, spacing: 8) {
-            ZStack {
-                if let file = screen.file {
-                    ScreenImage(path: file, version: screen.mtime)
-                        .onTapGesture { preview = screen }
-                        // 和访达一样：选中（Tab 键移过来）后按空格看大图
-                        .focusable()
-                        .focusEffectDisabled(false)
-                        .onKeyPress(.space) { preview = screen; return .handled }
-                        .help("点击或按空格查看大图")
-                } else {
-                    Rectangle().fill(.quaternary)
-                    Text(running ? "生成中…" : "未生成").foregroundStyle(.secondary)
-                }
-            }
-            .frame(height: 440)
-            .frame(maxWidth: .infinity)
-            .background(Color.secondary.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            FlowLayout(spacing: 4) {
-                TagView(text: tag.0, tone: tag.1)
-                if screen.state["promptEdited"].isTruthy && data.origin != "imported" { TagView(text: "提示词已改", tone: .purple) }
-            }
-            if ["failed", "error"].contains(gate?["status"]?.string ?? "") {
-                Text(gate?["reasons"].items.map(\.jsString).joined(separator: "；") ?? "").font(.caption).foregroundStyle(.red)
-            }
-            if !screen.warnings.isEmpty {
-                Text("\(screen.warnings.count) 条提醒").font(.caption).foregroundStyle(.orange).help(screen.warnings.map { "• \($0)" }.joined(separator: "\n"))
-            }
-            if gate?["status"]?.string == "needs-manual", !data.readOnly {
-                HStack {
-                    Button("没有软件名，通过") { manual(screen, true) }.buttonStyle(.primary).controlSize(.small)
-                    Button("不合格", role: .destructive) { manual(screen, false) }.controlSize(.small)
-                }
-                .disabled(running)
-            }
-            if !data.readOnly {
-                HStack(spacing: 4) {
-                    Button { regenerate = screen } label: { Label("重新生成", systemImage: "arrow.clockwise").labelStyle(.iconOnly) }
-                        .help("按原来的要求重新生成这一屏（花一张图的费用）")
-                    Button { history = screen } label: {
-                        HStack(spacing: 3) {
-                            Label("以前的截图", systemImage: "clock.arrow.circlepath").labelStyle(.iconOnly)
-                            if !screen.history.isEmpty { Text("\(screen.history.count)") }
-                        }
-                    }
-                    .help(screen.history.isEmpty ? "还没有以前的截图" : "以前的截图 \(screen.history.count) 张，可以换回")
-                    .disabled(screen.history.isEmpty)
-                    Button { alternates = screen } label: {
-                        HStack(spacing: 3) {
-                            Label("备选图", systemImage: "arrow.left.arrow.right").labelStyle(.iconOnly)
-                            if !screen.alternates.isEmpty { Text("\(screen.alternates.count)") }
-                        }
-                    }
-                    .help(screen.alternates.isEmpty ? "没有备选图" : "备选图 \(screen.alternates.count) 张")
-                    .disabled(screen.alternates.isEmpty)
-                    Spacer()
-                    Menu {
-                        Button("查看大图") { preview = screen }.disabled(screen.file == nil)
-                        Button("以前的截图…") { history = screen }.disabled(screen.history.isEmpty)
-                        Button("查看 / 编辑提示词") { promptEdit = screen }
-                        Divider()
-                        Button("人工确认：没有软件名") { manual(screen, true) }
-                        Button("人工判定：不合格") { manual(screen, false) }
-                    } label: {
-                        Label("更多", systemImage: "ellipsis.circle").labelStyle(.iconOnly)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                }
-                .buttonStyle(.borderless)
-                .disabled(running)
-            }
-        }
-    }
-
-    @ViewBuilder
-    func textColumn(_ index: Int, _ screen: ScreenItem) -> some View {
-        let id = screen.id
-        if contentScreens.contains(where: { $0["id"]?.string == id }) {
-            let text = texts[id] ?? ""
-            let length = text.jsTrimmed.jsLength
-            let edited = data.state["screens"]?[id]?["textEdited"].isTruthy ?? false
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Text("图\(index + 1)").fontWeight(.semibold)
-                    TextField("界面标题（也是图注）", text: Binding(get: { titles[id] ?? "" }, set: { titles[id] = $0 }))
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 240)
-                        .disabled(!editable)
-                    if edited { TagView(text: "人工改过", tone: .purple) }
-                    Spacer()
-                    Text(length >= floor ? "\(length) 字 ✓" : "\(length) / \(floor) 字").monospacedDigit().foregroundStyle(length >= floor ? Color.secondary : Color.orange)
-                    if !data.readOnly {
-                        historyMenu(id) { texts[id] = $0 }
-                        Button("让大模型重写") { rewrite = ([id], "图\(index + 1)的说明") }.disabled(running)
-                    }
-                }
-                TextEditor(text: Binding(get: { texts[id] ?? "" }, set: { texts[id] = $0 }))
-                    .font(.body)
-                    .lineSpacing(3)
-                    .frame(minHeight: 300)
-                    .scrollContentBackground(.hidden)
-                    .padding(6)
-                    .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-                    .disabled(!editable)
-                if length < floor { warning("还差 \(floor - length) 字；不够 \(floor) 字时交付包生成不了") }
-                if Rx.test(#"图\s*[0-9]"#, text) { warning("正文里不要写「图N」，图注会自动生成") }
-            }
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("图\(index + 1)").fontWeight(.semibold)
-                    Text(screen.title).foregroundStyle(.secondary)
-                }
-                Text("截图检查通过后会自动写这一屏的说明。").foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    /// 每一行下面：写要怎么改，直接改图或只改文字
-    func changeBar(_ index: Int, _ screen: ScreenItem) -> some View {
-        let id = screen.id
-        let request = (changeRequests[id] ?? "").jsTrimmed
-        let hasText = contentScreens.contains { $0["id"]?.string == id }
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text("要怎么改").foregroundStyle(.secondary)
-                TextField("例如：底部按钮改成绿色、日期都改成内容日期、说明多写异常处理", text: Binding(get: { changeRequests[id] ?? "" }, set: { changeRequests[id] = $0 }), axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(1...3)
-                    .disabled(!editable)
-                Button("改图") { applyChange(index, screen, image: true) }
-                    .buttonStyle(.primary)
-                    .disabled(request.isEmpty || !editable || screen.file == nil)
-                    .help("按这句话改这张截图（花一张图的费用），说明会按新图更新；改完会核对有没有改到")
-                Button("只改文字") { applyChange(index, screen, image: false) }
-                    .disabled(request.isEmpty || !editable || !hasText)
-                    .help("只按这句话改这一屏的说明，不生图")
-            }
-            Text("改图会花一张图的费用，改完会核对有没有改到；只改文字不生图。现在的图和文字都会留在历史里。").font(.caption).foregroundStyle(.secondary)
-        }
-    }
-
-    func applyChange(_ index: Int, _ screen: ScreenItem, image: Bool) {
-        let instruction = (changeRequests[screen.id] ?? "").jsTrimmed
-        guard !instruction.isEmpty else { return }
-        Task {
-            await autosave()
-            let action: JSON = .obj([
-                "type": .string(image ? "image" : "text"), "target": .string(screen.id), "targetLabel": .string("图\(index + 1)「\(screen.title)」"),
-                "instruction": .string(instruction), "items": [],
-            ])
-            let ok = await model.perform(image ? "已开始改图，进度在页面上方" : "已开始改这一屏的说明") {
-                _ = try await model.core?.pipeline.applyFeedback(data.dir, actions: [action])
-            }
-            if ok {
-                changeRequests[screen.id] = ""
-                onChanged()
-            }
-        }
-    }
-
-    func manual(_ screen: ScreenItem, _ passed: Bool) {
-        Task {
-            guard await model.perform(nil, { try await model.core?.pipeline.manualGate(data.dir, screen.id, passed) }) else { return }
-            let remaining = data.screens.filter { $0.id != screen.id && !["passed", "manual-passed"].contains($0.gate?["status"]?.string ?? "") }
-            if passed && remaining.isEmpty {
-                model.toast(.success, "全部截图已确认，继续生成文案和交付包")
-                model.core?.run(data.dir)
-            } else {
-                model.toast(.success, passed ? "已确认没有软件名\(remaining.isEmpty ? "" : "，还剩 \(remaining.count) 张")" : "已标记为不合格，可以重新生成或换回以前的截图")
-            }
-            onChanged()
-        }
-    }
-
-    // MARK: 设计说明
-
-    var designEditor: some View {
-        SettingsGroup(title: "设计说明") {
-            ForEach(sections.indices, id: \.self) { index in
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        TextField("小节标题", text: Binding(get: { sections.indices.contains(index) ? sections[index].title : "" }, set: { if sections.indices.contains(index) { sections[index].title = $0 } }))
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 260)
-                            .disabled(!editable)
-                        Spacer()
-                        if !data.readOnly { historyMenu("design-\(index + 1)") { value in if sections.indices.contains(index) { sections[index].text = value } } }
-                    }
-                    TextEditor(text: Binding(get: { sections.indices.contains(index) ? sections[index].text : "" }, set: { if sections.indices.contains(index) { sections[index].text = $0 } }))
-                        .font(.body)
-                        .frame(minHeight: 120)
-                        .scrollContentBackground(.hidden)
-                        .padding(6)
-                        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-                        .disabled(!editable)
-                }
-                .padding(12)
-            }
-        }
-    }
-
-    // MARK: 历史和保存
-
-    func warning(_ text: String) -> some View {
-        Label(text, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange)
-    }
-
-    /// 这一处以前的文字（自己改之前的、大模型重写之前的），点一下换回来（换回也会自动保存）
-    func historyMenu(_ target: String, apply: @escaping (String) -> Void) -> some View {
-        let versions = data.contentHistory.filter { $0["target"]?.string == target }
-        return Menu {
-            ForEach(Array(versions.prefix(30).enumerated()), id: \.offset) { _, version in
-                Button("\(formatTime(version["at"]?.string)) · \(version["source"]?.jsString ?? "")：\(version["text"]?.jsString.jsTrimmed.jsSlice(0, 24) ?? "")…") {
-                    apply(version["text"]?.jsString ?? "")
-                }
-            }
-        } label: {
-            Label(versions.isEmpty ? "历史" : "历史 \(versions.count)", systemImage: "clock.arrow.circlepath")
-        }
-        .menuStyle(.button)
-        .buttonStyle(.borderless)
-        .fixedSize()
-        .disabled(versions.isEmpty || !editable)
-        .help(versions.isEmpty ? "还没有以前的版本" : "换回以前的文字")
     }
 
     func syncFromContent() {

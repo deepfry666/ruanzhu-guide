@@ -21,6 +21,9 @@ struct ProjectDetailView: View {
     @State private var renameOpen = false
     @State private var removeConfirm = false
     @State private var regenerateConfirm = false
+    @State private var bloomTrigger = false
+    @State private var sawGeneration = false
+    @AppStorage("completedProjectBlooms") private var completedBlooms = ""
 
     var live: JSON? { model.signal(dir).live }
     var running: Bool { (data?.runningFlag ?? false) || data?.status == "running" || live != nil }
@@ -47,16 +50,25 @@ struct ProjectDetailView: View {
     func reload() async {
         guard let core = model.core else { return }
         do {
-            data = ProjectData(json: try await core.getProject(dir))
+            let next = ProjectData(json: try await core.getProject(dir))
+            let identity = Data(dir.utf8).base64EncodedString()
+            let completed = Set(completedBlooms.split(separator: "|").map(String.init))
+            if sawGeneration, next.status == "done", !next.state["bundleUpdating"].isTruthy, !completed.contains(identity) {
+                completedBlooms += "|" + identity
+                bloomTrigger.toggle()
+                sawGeneration = false
+            }
+            if next.runningFlag, !next.state["bundleUpdating"].isTruthy { sawGeneration = true }
+            data = next
             loadError = nil
         } catch {
             loadError = messageOf(error)
         }
     }
 
-    /// 没选过时沿用上一个项目停留的页面（逐个检查时翻到下一个项目还在同一页），否则有截图就进编辑页
+    /// 每个项目首次打开时由状态决定，手动切换只影响当前项目。
     var activeTab: ProjectTab {
-        tab ?? model.lastProjectTab ?? ((data?.screens.contains { $0.file != nil } ?? false) ? .editor : .overview)
+        tab ?? (data?.status == "done" ? .editor : .overview)
     }
 
     /// 历史项目列表当前顺序里的上一个 / 下一个（跟着列表的搜索和筛选）
@@ -89,18 +101,9 @@ struct ProjectDetailView: View {
         let waitingStep = STEP_ORDER.first { data.stepStatus($0) == "review" }
         let refresh: () -> Void = { Task { await reload() } }
         PageScroll {
-            HStack(spacing: 6) {
-                TagView(text: status.label, tone: status.tone)
+            HStack(spacing: Spacing.xs) {
                 if data.state["bundleUpdating"].isTruthy { TagView(text: "交付包更新中", tone: .blue) }
                 if data.origin == "imported" { TagView(text: "历史") }
-                if let timing = data.timing {
-                    if let completed = timing["completedMs"]?.number {
-                        TagView(text: "用时 \(formatDuration(completed))", tone: .green)
-                            .help("累计 \(formatDurationUI(timing["totalMs"]?.number))（含之后的修改和更新），共运行 \(timing["runs"].items.count) 次")
-                    } else if let total = timing["totalMs"]?.number, total > 0 {
-                        TagView(text: "已用时 \(formatDuration(total))")
-                    }
-                }
                 Spacer()
             }
             if data.submitted {
@@ -129,7 +132,7 @@ struct ProjectDetailView: View {
                 }
             } else if model.core?.pipeline.bundleNeedsContinuation(data.state) == true, !running {
                 Banner(.warning, "交付包待更新", message: "需要继续：\(STEP_ORDER.filter { !["receipt", "build"].contains($0) && !["done", "skipped"].contains(data.stepStatus($0)) }.map { UI_STEP_LABELS[$0] ?? $0 }.joined(separator: "、"))（可能调用 AI）") {
-                    Button("继续") { model.core?.run(dir) }
+                    Button("继续") { model.core?.run(dir) }.buttonStyle(.primary)
                 }
             }
             if let notice = data.state["bundleUpdateNotice"]?.string {
@@ -152,67 +155,43 @@ struct ProjectDetailView: View {
                 LivePanel(live: live, data: data)
             }
             switch activeTab {
-            case .overview: OverviewTab(data: data, running: running, onChanged: refresh)
+            case .overview:
+                VStack(alignment: .leading, spacing: Spacing.lg) {
+                    OverviewTab(data: data, running: running, onChanged: refresh)
+                    if !readOnly {
+                        HStack(spacing: Spacing.sm) {
+                            Button("批量修改意见", systemImage: "text.bubble") { feedbackOpen.toggle() }
+                            if !data.historyReadOnly {
+                                Button("整个重新生成…", systemImage: "arrow.clockwise") { regenerateConfirm = true }.disabled(running)
+                            }
+                        }
+                    }
+                }
             case .plan: PlanTab(data: data, running: running, onChanged: refresh)
             case .editor: EditorTab(data: data, running: running, onChanged: refresh)
             case .delivery: DeliveryTab(data: data, running: running, onChanged: refresh)
             }
         }
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker("", selection: Binding(get: { activeTab }, set: { tab = $0; model.lastProjectTab = $0 })) {
-                    Text("概览").tag(ProjectTab.overview)
-                    Text("规划").tag(ProjectTab.plan)
-                    Text(data.screens.isEmpty ? "编辑" : "编辑 \(data.screens.count) 屏").tag(ProjectTab.editor)
-                    Text("交付").tag(ProjectTab.delivery)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+            ToolbarItem(placement: .navigation) {
+                TagView(text: status.label, tone: status.tone).bloom(trigger: bloomTrigger)
             }
-            ToolbarItemGroup(placement: .navigation) {
-                // 逐个检查：不用回列表就能翻到上一个 / 下一个项目
-                ControlGroup {
-                    Button { go(-1) } label: { Label("上一个项目", systemImage: "chevron.up") }
-                        .keyboardShortcut(.upArrow, modifiers: [.command, .option])
-                        .help("上一个项目（⌥⌘↑）")
-                        .disabled(neighbor(-1) == nil)
-                    Button { go(1) } label: { Label("下一个项目", systemImage: "chevron.down") }
-                        .keyboardShortcut(.downArrow, modifiers: [.command, .option])
-                        .help("下一个项目（⌥⌘↓）")
-                        .disabled(neighbor(1) == nil)
-                }
+            ToolbarItem(placement: .principal) {
+                SegmentedTabs(selection: Binding(get: { activeTab }, set: { tab = $0 }), items: [
+                    .init(value: .overview, title: "概览"),
+                    .init(value: .plan, title: "规划"),
+                    .init(value: .editor, title: "编辑", count: data.screens.count),
+                    .init(value: .delivery, title: "交付"),
+                ])
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                if !readOnly {
-                    Button {
-                        feedbackOpen.toggle()
-                    } label: {
-                        Label("批量修改意见", systemImage: "text.bubble")
-                    }
-                    .badge(data.pendingFeedback.count)
-                    .help("批量修改意见：一次改很多处、说不清改哪屏时用；改某一屏直接在编辑页那一屏上改")
-                }
-                Button { model.open(dir) } label: { Label("在访达中打开", systemImage: "folder") }
-                    .help("在访达中打开")
-                Menu {
-                    if !readOnly { Button("改软件名…") { renameOpen = true }.disabled(running) }
-                    if !readOnly, !data.historyReadOnly { Button("整个重新生成…") { regenerateConfirm = true }.disabled(running) }
-                    if data.submitted {
-                        Button("取消已提交") { setSubmitted(false) }
-                    } else if !data.historyReadOnly {
-                        Button("标记为已提交") { setSubmitted(true) }.disabled(running)
-                    }
-                    Divider()
-                    Button("从列表移除…") { removeConfirm = true }.disabled(running)
-                } label: {
-                    Label("更多", systemImage: "ellipsis")
-                }
                 if running {
-                    Button(role: .destructive) {
+                    Button {
                         model.core?.cancel(dir)
                     } label: {
                         Label("停止", systemImage: "stop.fill")
                     }
+                    .buttonStyle(.secondary)
                     .help("停止")
                 } else if !readOnly, model.core?.pipeline.bundleNeedsContinuation(data.state) == true {
                     Button {
@@ -224,13 +203,30 @@ struct ProjectDetailView: View {
                     .buttonStyle(.primary)
                     .help("继续")
                 }
+                Button { go(-1) } label: { Label("上一个项目", systemImage: "chevron.up") }
+                        .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                        .help("上一个项目（⌥⌘↑）")
+                        .disabled(neighbor(-1) == nil)
+                Button { go(1) } label: { Label("下一个项目", systemImage: "chevron.down") }
+                        .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                        .help("下一个项目（⌥⌘↓）")
+                        .disabled(neighbor(1) == nil)
+
+                Menu {
+                    Button("在访达中打开") { model.open(dir) }
+                    if !readOnly { Button("改软件名…") { renameOpen = true }.disabled(running) }
+                    if data.submitted {
+                        Button("取消已提交") { setSubmitted(false) }
+                    } else if !data.historyReadOnly {
+                        Button("标记为已提交") { setSubmitted(true) }.disabled(running)
+                    }
+                    Divider()
+                    Button("从列表移除…") { removeConfirm = true }.disabled(running)
+                } label: {
+                    Label("更多", systemImage: "ellipsis")
+                }
+
             }
-        }
-        .toolbarTitleMenu {
-            if !readOnly {
-                Button("改软件名…") { renameOpen = true }.disabled(running)
-            }
-            Button("在访达中打开") { model.open(dir) }
         }
         .inspector(isPresented: $feedbackOpen) {
             FeedbackPanel(data: data, running: running, onChanged: refresh)
@@ -283,7 +279,7 @@ struct RenameSheet: View {
     @State private var busy = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
             Text("改软件名").font(.title2.weight(.semibold))
             Text("不会重新规划和生图；会用新名字重新检查截图，再重建交付包。").foregroundStyle(.secondary)
             TextField("软件名（含版本号）", text: $value).textFieldStyle(.roundedBorder)
@@ -312,7 +308,7 @@ struct RenameSheet: View {
                 .disabled(busy || value.jsTrimmed.isEmpty)
             }
         }
-        .padding(22)
+        .padding(Spacing.xl)
         .frame(width: 460)
         .onAppear { value = name }
     }

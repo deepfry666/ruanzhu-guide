@@ -16,13 +16,14 @@ struct DeliveryTab: View {
         let code = data.codeSource
         let oldCodeDoc = data.bundleFiles.contains { $0.contains("_代码-（JAVA）") }
         AdaptiveColumns(breakpoint: 760, trailingWidth: 360) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
                 if !data.externalEdits.isEmpty, !readOnly {
                     Banner(.info, "这些文件在上次生成后改过：\(data.externalEdits.joined(separator: "、"))", message: "可能是在 WPS 里手改的。下次更新交付包时会用软件里的内容覆盖，手改的文件先另存到项目的 archive 文件夹，不会被清理。")
                 }
+                BundleStatusCard(data: data)
                 SettingsGroup(title: "交付文件") {
                     if data.bundleFiles.isEmpty {
-                        Text("还没有交付包").foregroundStyle(.secondary).padding(14)
+                        Text("还没有交付包").foregroundStyle(.secondary).padding(Spacing.lg)
                     } else {
                         ForEach(data.bundleFiles, id: \.self) { file in
                             SettingsRow(label: file) {
@@ -31,7 +32,7 @@ struct DeliveryTab: View {
                         }
                     }
                 }
-                HStack(spacing: 4) {
+                HStack(spacing: Spacing.xs) {
                     Text("来源和每次修改都记在").foregroundStyle(.secondary)
                     Button("generation-record.json") { model.open(Path.join(data.dir, RECORD_FILE)) }.buttonStyle(.link)
                 }
@@ -100,7 +101,7 @@ struct DeliveryTab: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
                 SettingsGroup(title: "代码模板", footer: "52 行版每页有 52 行非空原始代码，固定 60 页；历史版沿用原版式。已有交付包时换模板只重做代码 Word、PDF 和 TXT 开头，不调用 AI，旧文件先归档。", trailing: AnyView(Button("模板库") { model.go(.settings, tab: "code") }.buttonStyle(.borderless))) {
                     let enabled = model.settings.codeTemplates.enabled
                     SettingsRow(label: "用的模板", info: code["source"].truthyValue == nil ? nil : (code["locked"].isTruthy ? "已记在这个项目上，改设置不影响它。" : "还没记下，第一次生成交付包时按设置分配。")) {

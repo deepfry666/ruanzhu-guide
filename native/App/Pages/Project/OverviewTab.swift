@@ -19,19 +19,19 @@ struct OverviewTab: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
             SettingsGroup(title: "进度") {
-                StepsIndicator(data: data).padding(14)
+                StepsIndicator(data: data).padding(Spacing.lg)
             }
             AdaptiveColumns(breakpoint: 760, trailingWidth: 320) {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: Spacing.lg) {
                     settingsGroup
                     extrasGroup
                     TimingCard(data: data)
                     if !data.warnings.isEmpty {
                         SettingsGroup(title: "提醒") {
                             ForEach(data.warnings, id: \.self) { warning in
-                                Text(warning).font(.callout).padding(.horizontal, 14).padding(.vertical, 9).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+                                Text(warning).font(.callout).padding(.horizontal, Spacing.lg).padding(.vertical, 9).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
                             }
                         }
                     }
@@ -120,32 +120,23 @@ struct StepsIndicator: View {
         HStack(alignment: .top, spacing: 0) {
             ForEach(Array(STEP_ORDER.enumerated()), id: \.element) { index, step in
                 let status = data.stepStatus(step)
-                VStack(spacing: 6) {
+                VStack(spacing: Spacing.xs) {
                     ZStack {
-                        Circle().fill(fill(status)).frame(width: 26, height: 26)
-                        icon(status, index: index)
+                        CheckBadge(checked: ["done", "skipped"].contains(status))
+                        if !["done", "skipped"].contains(status) { icon(status, index: index) }
                     }
                     Text(UI_STEP_LABELS[step] ?? step).font(.caption.weight(.medium)).foregroundStyle(status == "pending" ? .secondary : .primary)
                     if status == "skipped" {
                         Text("不需要").font(.caption2).foregroundStyle(.secondary)
                     } else if status == "review" {
-                        Text("待确认").font(.caption2).foregroundStyle(.orange)
+                        Text("待确认").font(.caption2).foregroundStyle(Palette.warning)
                     }
                 }
                 .frame(maxWidth: .infinity)
                 if index < STEP_ORDER.count - 1 {
-                    Rectangle().fill(["done", "skipped"].contains(status) ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.25)).frame(height: 2).padding(.top, 12).frame(maxWidth: 40)
+                    Rectangle().fill(["done", "skipped"].contains(status) ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.25)).frame(height: 2).padding(.top, Spacing.md).frame(maxWidth: 40)
                 }
             }
-        }
-    }
-
-    func fill(_ status: String) -> Color {
-        switch status {
-        case "done", "skipped": .accentColor
-        case "running", "review": .accentColor.opacity(0.18)
-        case "failed": .red
-        default: .secondary.opacity(0.15)
         }
     }
 
@@ -155,7 +146,7 @@ struct StepsIndicator: View {
         case "done", "skipped": Image(systemName: "checkmark").font(.caption.bold()).foregroundStyle(.white)
         case "failed": Image(systemName: "xmark").font(.caption.bold()).foregroundStyle(.white)
         case "running": ProgressView().controlSize(.mini)
-        case "review": Image(systemName: "hand.raised.fill").font(.caption).foregroundStyle(.orange)
+        case "review": Image(systemName: "hand.raised.fill").font(.caption).foregroundStyle(Palette.warning)
         default: Text("\(index + 1)").font(.caption.bold()).foregroundStyle(.secondary)
         }
     }
@@ -190,7 +181,7 @@ struct TimingCard: View {
                     }
                 }
                 .font(.callout)
-                .padding(14)
+                .padding(Spacing.lg)
             }
         }
     }
@@ -202,12 +193,12 @@ struct LogCard: View {
     var body: some View {
         SettingsGroup(title: "日志") {
             if log.isEmpty {
-                Text("还没有日志").foregroundStyle(.secondary).padding(14)
+                Text("还没有日志").foregroundStyle(.secondary).padding(Spacing.lg)
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 6) {
+                    LazyVStack(alignment: .leading, spacing: Spacing.xs) {
                         ForEach(Array(log.reversed().enumerated()), id: \.offset) { _, entry in
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
                                 Text(formatTime(entry["at"]?.string)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                                 Text(entry["message"]?.jsString ?? "")
                                     .font(.callout)
@@ -216,7 +207,7 @@ struct LogCard: View {
                             }
                         }
                     }
-                    .padding(14)
+                    .padding(Spacing.lg)
                 }
                 .frame(maxHeight: 560)
             }

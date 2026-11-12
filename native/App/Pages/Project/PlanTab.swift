@@ -13,7 +13,7 @@ struct PlanTab: View {
         let readOnly = data.readOnly
         if let plan = data.plan {
             let waiting = data.stepStatus("plan") == "review"
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
                 SettingsGroup(title: "规划概要", trailing: AnyView(HStack {
                     if waiting {
                         Button("确认规划，开始生图") {
@@ -36,10 +36,10 @@ struct PlanTab: View {
                 }
                 SettingsGroup(title: "界面（\(plan["screens"].items.count) 屏）") {
                     ForEach(plan["screens"].items, id: \.self) { screen in
-                        HStack(alignment: .top, spacing: 14) {
+                        HStack(alignment: .top, spacing: Spacing.lg) {
                             Text(screen["id"]?.jsString ?? "").font(.callout.monospaced()).foregroundStyle(.secondary).frame(width: 74, alignment: .leading)
                             Text(screen["title"]?.jsString ?? "").fontWeight(.semibold).frame(width: 140, alignment: .leading)
-                            VStack(alignment: .leading, spacing: 6) {
+                            VStack(alignment: .leading, spacing: Spacing.xs) {
                                 FlowLayout { ForEach(screen["mustShow"].items.map(\.jsString), id: \.self) { TagView(text: $0) } }
                                 Text(screen["sampleData"].items.map(\.jsString).joined(separator: "；")).font(.caption).foregroundStyle(.secondary)
                             }
@@ -47,8 +47,8 @@ struct PlanTab: View {
                             Button("编辑") { editing = screen }
                                 .disabled(running || readOnly)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, Spacing.lg)
+                        .padding(.vertical, Spacing.sm)
                     }
                 }
             }
@@ -69,7 +69,7 @@ struct PlanTab: View {
                 Text("会让大模型重新设计全部界面，之后所有截图都要重新生成，文案也会重写（人工改过的除外）。")
             }
         } else {
-            VStack(spacing: 14) {
+            VStack(spacing: Spacing.lg) {
                 EmptyHint(title: "还没有界面规划", systemImage: "rectangle.3.group")
                 if !readOnly {
                     Button("开始规划") { model.core?.run(data.dir, RunOptions(until: "plan", reviewPlan: true)) }
@@ -94,28 +94,28 @@ struct PlanScreenSheet: View {
     @State private var contract: [String: String] = [:]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Spacing.md) {
             Text("编辑 \(screen["id"]?.jsString ?? "")").font(.title2.weight(.semibold))
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: Spacing.md) {
                     field("界面标题（也是图注）") { TextField("", text: $title).textFieldStyle(.roundedBorder).onChange(of: title) { _, next in if next.count > 20 { title = String(next.prefix(20)) } } }
                     field("应包含的内容") { TokenEditor(tokens: $mustShow) }
                     field("示例数据（截图里的具体数值）") { TokenEditor(tokens: $sampleData) }
                     field("底部导航选中项（留空表示隐藏底部导航）") { TextField("", text: $activeTab).textFieldStyle(.roundedBorder) }
                     field("画面描述（英文，给生图模型看）") {
-                        TextEditor(text: $visualBrief).font(.body).frame(minHeight: 110).padding(4).cardBackground(cornerRadius: 8)
+                        TextEditor(text: $visualBrief).font(.body).frame(minHeight: 110).padding(Spacing.xs).cardBackground(cornerRadius: Radius.small)
                     }
-                    HStack(spacing: 10) {
+                    HStack(spacing: Spacing.sm) {
                         contractField("entry", "入口")
                         contractField("action", "操作")
                     }
-                    HStack(spacing: 10) {
+                    HStack(spacing: Spacing.sm) {
                         contractField("feedback", "反馈")
                         contractField("exception", "异常")
                         contractField("exit", "去向")
                     }
                 }
-                .padding(.trailing, 6)
+                .padding(.trailing, Spacing.xs)
             }
             HStack {
                 Spacer()
@@ -133,7 +133,7 @@ struct PlanScreenSheet: View {
                 .disabled(title.jsTrimmed.isEmpty)
             }
         }
-        .padding(22)
+        .padding(Spacing.xl)
         .frame(width: 720, height: 640)
         .onAppear {
             title = screen["title"]?.jsString ?? ""
@@ -146,7 +146,7 @@ struct PlanScreenSheet: View {
     }
 
     func field<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
             Text(label).font(.callout.weight(.medium))
             content()
         }
