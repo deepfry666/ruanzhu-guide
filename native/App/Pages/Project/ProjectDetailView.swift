@@ -81,6 +81,8 @@ struct ProjectDetailView: View {
             }
             if next.runningFlag, !next.state["bundleUpdating"].isTruthy { sawGeneration = true }
 
+            // 默认标签只决定首次打开；保存、恢复旧图和后台任务不替用户切页。
+            if tab == nil { tab = next.status == "done" ? .editor : .overview }
             data = next
             if feedbackOpen { onInspectorData(next) }
             loadError = nil
