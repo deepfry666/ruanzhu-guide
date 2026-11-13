@@ -22,7 +22,7 @@ struct RootView: View {
             case .ready:
                 if model.trialMeasure {
                     // 保留列表滚动、筛选供测量；所有修改入口均无核心服务可调用。
-                    NavigationStack { ProjectsView() }
+                    NavigationStack { ProjectsView().navigationTitle("试用 · 项目") }
                         .overlay(alignment: .top) { Text("试用 · 测量模式（仅列表）").bold() }
                 } else {
                     MainSplitView()
@@ -48,34 +48,87 @@ struct RootView: View {
 }
 
 struct MainSplitView: View {
+    @State private var feedbackOpen = false
+    @State private var feedbackData: ProjectData?
+
+    var body: some View {
+        NavigationSplitView {
+            SidebarView().navigationSplitViewColumnWidth(Metrics.sidebarWidth)
+        } detail: {
+            WorkspaceDetail(feedbackOpen: $feedbackOpen, feedbackData: $feedbackData)
+        }
+        .inspector(isPresented: $feedbackOpen) {
+            if feedbackOpen, let data = feedbackData {
+                ProjectFeedbackInspector(data: data)
+                    .inspectorColumnWidth(min: 320, ideal: 360, max: 560)
+            }
+        }
+    }
+}
+
+/// 项目路径只由内容层观察，不让列表与详情切换重建外层分栏。
+private struct WorkspaceDetail: View {
+    @Environment(AppModel.self) private var model
+    @Binding var feedbackOpen: Bool
+    @Binding var feedbackData: ProjectData?
+
+    var body: some View {
+        ZStack {
+            // 保留原生表格，避免切换外观时销毁仍有待处理更新的表格协调器。
+            ProjectWorkspace(feedbackOpen: $feedbackOpen, feedbackData: $feedbackData)
+                .opacity(model.section == .projects || model.section == nil ? 1 : 0)
+                .allowsHitTesting(model.section == .projects || model.section == nil)
+                .accessibilityHidden(model.section != .projects && model.section != nil)
+            switch model.section ?? .projects {
+            case .projects:
+                EmptyView()
+            case .models:
+                NavigationStack { ModelsView() }
+            case .stats:
+                NavigationStack { StatsView() }
+            case .settings:
+                NavigationStack { SettingsView() }
+            }
+        }
+        .overlay(alignment: .bottom) { PendingJobsNotice() }
+        .onChange(of: model.projectPath) { _, _ in
+            if feedbackOpen { feedbackOpen = false }
+            if feedbackData != nil { feedbackData = nil }
+        }
+        .onChange(of: model.section) { _, _ in
+            if feedbackOpen { feedbackOpen = false }
+        }
+    }
+}
+
+private struct ProjectWorkspace: View {
+    @Environment(AppModel.self) private var model
+    @Binding var feedbackOpen: Bool
+    @Binding var feedbackData: ProjectData?
+
+    var body: some View {
+        GeometryReader { viewport in
+            ZStack {
+                ProjectsView()
+                if (model.section == .projects || model.section == nil), let dir = model.projectPath.last {
+                    ProjectDetailView(dir: dir, feedbackOpen: $feedbackOpen,
+                                      onInspectorData: { feedbackData = $0 }).id(dir)
+                }
+            }
+            .frame(width: viewport.size.width, height: viewport.size.height)
+        }
+        .navigationTitle((AppModel.isTrial ? "试用 · " : "") + "项目")
+    }
+}
+
+private struct ProjectFeedbackInspector: View {
+    let data: ProjectData
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        @Bindable var model = model
-        NavigationSplitView {
-            SidebarView()
-                .navigationSplitViewColumnWidth(Metrics.sidebarWidth)
-        } detail: {
-            Group {
-                switch model.section ?? .projects {
-                case .projects:
-                    NavigationStack(path: $model.projectPath) {
-                        ProjectsView()
-                            .navigationDestination(for: String.self) { dir in
-                                // 按项目区分视图：翻到上一个 / 下一个项目时重新加载，不沿用上一个项目的内容
-                                ProjectDetailView(dir: dir).id(dir)
-                            }
-                    }
-                case .models:
-                    NavigationStack { ModelsView() }
-                case .stats:
-                    NavigationStack { StatsView() }
-                case .settings:
-                    NavigationStack { SettingsView() }
-                }
-            }
-            .overlay(alignment: .bottom) { PendingJobsNotice() }
-        }
+        FeedbackPanel(data: data,
+                      running: data.runningFlag || data.status == "running" || model.signal(data.dir).live != nil,
+                      onChanged: { model.bump(data.dir) })
     }
 }
 

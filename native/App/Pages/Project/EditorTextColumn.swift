@@ -10,14 +10,13 @@ extension EditorTab {
             let length = text.jsTrimmed.jsLength
             let edited = data.state["screens"]?[id]?["textEdited"].isTruthy ?? false
             VStack(alignment: .leading, spacing: Spacing.sm) {
-                HStack(spacing: Spacing.sm) {
+                FlowLayout(spacing: Spacing.sm) {
                     Text("图\(index + 1)").fontWeight(.semibold)
                     TextField("界面标题（也是图注）", text: Binding(get: { titles[id] ?? "" }, set: { titles[id] = $0 }))
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 240)
                         .disabled(!editable)
                     if edited { TagView(text: "人工改过", tone: .purple) }
-                    Spacer()
                     Text(length >= floor ? "\(length) 字 ✓" : "\(length) / \(floor) 字").monospacedDigit().foregroundStyle(length >= floor ? Color.secondary : Color.orange)
                     if !data.readOnly {
                         historyMenu(id) { texts[id] = $0 }

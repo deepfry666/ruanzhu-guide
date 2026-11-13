@@ -58,6 +58,7 @@ extension ProjectsView {
         .contextMenu(forSelectionType: String.self) { ids in
             contextMenu(ids)
         } primaryAction: { ids in
+            guard (model.section == .projects || model.section == nil), model.projectPath.isEmpty else { return }
             // 双击（或回车）只打开双击的那一行；多选时第一下单击带来的加选 / 取消要撤回
             if let clicked = lastClicked, ids.contains(clicked) || beforeClick?.contains(clicked) == true {
                 if let before = beforeClick, before.count > 1 || checkMode { selection = before }
@@ -66,8 +67,8 @@ extension ProjectsView {
                 model.openProject(dir)
             }
         }
-        .onDeleteCommand { askRemove(selectedRows) }
-        .onExitCommand { clearSelection() }
+        .onDeleteCommand { if model.projectPath.isEmpty && (model.section == .projects || model.section == nil) { askRemove(selectedRows) } }
+        .onExitCommand { if model.projectPath.isEmpty && (model.section == .projects || model.section == nil) { clearSelection() } }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if !selection.isEmpty { selectionBar }
         }

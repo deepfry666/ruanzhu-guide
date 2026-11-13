@@ -157,11 +157,12 @@ struct TimingCard: View {
     let data: ProjectData
 
     var body: some View {
-        if let timing = data.timing, !timing["runs"].items.isEmpty {
+        if let timing = data.timing, timing["completedMs"]?.number != nil || timing["totalMs"]?.number != nil || !timing["runs"].items.isEmpty {
             let runs = Array(timing["runs"].items.reversed().prefix(10))
             SettingsGroup(title: "用时", trailing: AnyView(
                 Text("\(timing["completedMs"]?.number.map { "完成 \(formatDuration($0)) · " } ?? "")累计 \(formatDurationUI(timing["totalMs"]?.number))").foregroundStyle(.secondary)
             )) {
+                if !runs.isEmpty {
                 Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
                     GridRow {
                         Text("开始"); Text("原因"); Text("结果"); Text("用时"); Text("各步骤")
@@ -182,6 +183,7 @@ struct TimingCard: View {
                 }
                 .font(.callout)
                 .padding(Spacing.lg)
+                }
             }
         }
     }

@@ -21,7 +21,6 @@ extension EditorTab {
                     Text(running ? "生成中…" : "未生成").foregroundStyle(.secondary)
                 }
             }
-            .frame(width: Metrics.editorImageWidth)
             .frame(minHeight: Metrics.gridShotHeight)
             .frame(maxWidth: Metrics.editorImageWidth)
             .background(Palette.fill.color)

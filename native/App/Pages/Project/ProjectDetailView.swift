@@ -13,12 +13,13 @@ enum ProjectTab: String, CaseIterable, Identifiable {
 
 struct ProjectDetailView: View {
     let dir: String
+    @Binding var feedbackOpen: Bool
+    let onInspectorData: (ProjectData) -> Void
     @Environment(AppModel.self) private var model
     @State private var data: ProjectData?
     @State private var contentReady = false
     @State private var loadError: String?
     @State private var tab: ProjectTab?
-    @State private var feedbackOpen = false
     @State private var renameOpen = false
     @State private var removeConfirm = false
     @State private var regenerateConfirm = false
@@ -34,18 +35,32 @@ struct ProjectDetailView: View {
             if let data {
                 content(data)
             } else if let loadError {
-                ContentUnavailableView("项目打不开", systemImage: "exclamationmark.triangle", description: Text(loadError))
+                VStack {
+                    backToProjects
+                    ContentUnavailableView("项目打不开", systemImage: "exclamationmark.triangle", description: Text(loadError))
+                }
             } else {
-                Text("正在打开项目…").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack {
+                    backToProjects
+                    Text("正在打开项目…").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
         }
-        .navigationTitle(data?.name ?? "项目")
         .task(id: model.signal(dir).revision) { await reload() }
-        // 回到列表时这个项目照样显示（即使状态变了不符合筛选），并且选中它
+        // 回到列表时这个项目照样显示（即使状态变了不符合筛选）。
         .onAppear { model.stickyProject = dir }
-        .onDisappear { if model.projectPath.isEmpty { model.listSelectRequest = dir } }
         .onChange(of: model.devProjectTab) { _, next in if let next { tab = next } }
+        .onChange(of: feedbackOpen) { _, open in
+            if open, let data { onInspectorData(data) }
+        }
         .onChange(of: model.devFeedbackOpen) { _, next in if let next { feedbackOpen = next } }
+    }
+
+    private var backToProjects: some View {
+        Button("返回项目列表") { model.projectPath = [] }
+            .keyboardShortcut("[", modifiers: .command)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Spacing.lg)
     }
 
     func reload() async {
@@ -65,7 +80,9 @@ struct ProjectDetailView: View {
                 sawGeneration = false
             }
             if next.runningFlag, !next.state["bundleUpdating"].isTruthy { sawGeneration = true }
+
             data = next
+            if feedbackOpen { onInspectorData(next) }
             loadError = nil
         } catch {
             loadError = messageOf(error)
@@ -106,147 +123,159 @@ struct ProjectDetailView: View {
         let status = PROJECT_STATUS[statusKey] ?? (data.status, .neutral)
         let waitingStep = STEP_ORDER.first { data.stepStatus($0) == "review" }
         let refresh: () -> Void = { Task { await reload() } }
-        PageScroll {
-            if contentReady {
-                HStack(spacing: Spacing.xs) {
-                    if data.state["bundleUpdating"].isTruthy { TagView(text: "交付包更新中", tone: .blue) }
-                    if data.origin == "imported" { TagView(text: "历史") }
-                    Spacer()
-                }
-                if data.submitted {
-                    Banner(.info, "已提交，只能查看", message: "\(data.submittedAt.map { "标记于 \(formatTime($0))。" } ?? "")不能运行、改文字、改图或换模板，批量操作也会跳过它。要修改请先取消已提交。") {
-                        Button("取消已提交") { setSubmitted(false) }.buttonStyle(.secondary)
+        VStack(spacing: 0) {
+            ProjectHeaderLayout {
+                HStack(spacing: Spacing.sm) {
+                    Button { model.projectPath = [] } label: {
+                        Label("返回项目", systemImage: "chevron.left").labelStyle(.iconOnly)
                     }
-                } else if data.historyReadOnly {
-                    Banner(.info, "这个旧项目只有交付包，没有文案和截图源文件，只能查看。")
+                    .keyboardShortcut("[", modifiers: .command)
+                    .help("返回项目列表（⌘[）")
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(data.name).textStyle(Typography.title).lineLimit(1).help(data.name)
+                        TagView(text: status.label, tone: status.tone).bloom(trigger: bloomTrigger)
+                    }
                 }
-                if model.codeBatch?.current == dir {
-                    Banner(.info, "正在更新这个项目的代码材料…", message: "重排代码 Word、PDF 和 TXT 开头，几秒钟。")
-                } else if model.codeBatch?.pending.contains(dir) == true {
-                    Banner(.info, "排在更新代码材料的队伍里，轮到它时会自动处理")
+                .frame(width: Metrics.sidebarWidth, alignment: .leading)
+                Group {
+                    SegmentedTabs(selection: Binding(get: { activeTab }, set: { tab = $0 }), items: [
+                        .init(value: .overview, title: "概览"),
+                        .init(value: .plan, title: "规划"),
+                        .init(value: .editor, title: "编辑", count: data.screens.count),
+                        .init(value: .delivery, title: "交付"),
+                    ])
                 }
-                if let lastError = data.state["lastError"]?.string, !running, !data.submitted {
-                    let error = splitDiagnostics(lastError)
-                    Banner(.error, "需要处理", message: error.text) {
-                        if let path = error.path, FS.exists(path) {
-                            Button("查看诊断文件") { model.open(path) }.buttonStyle(.secondary)
+                FlowLayout(spacing: Spacing.sm) {
+                    if running {
+                        Button {
+                            model.core?.cancel(dir)
+                        } label: {
+                            Label("停止", systemImage: "stop.fill")
                         }
+                        .buttonStyle(.secondary)
+                        .help("停止")
+                    } else if !readOnly, model.core?.pipeline.bundleNeedsContinuation(data.state) == true {
+                        Button {
+                            model.core?.run(dir)
+                        } label: {
+                            Label("继续", systemImage: "play.fill")
+                                .labelStyle(.titleAndIcon)
+                        }
+                        .buttonStyle(.primary)
+                        .help("继续")
                     }
-                }
-                if let error = data.state["bundleUpdateError"]?.string, !data.readOnly {
-                    Banner(.error, "交付包更新失败", message: error) {
-                        Button("重试") { Task { await model.core?.retryBundleUpdate(dir) } }
+                    Button { go(-1) } label: { Label("上一个", systemImage: "chevron.up") }
+                            .labelStyle(.titleAndIcon)
+                            .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                            .help("上一个项目（⌥⌘↑）")
+                            .disabled(neighbor(-1) == nil)
+                    Button { go(1) } label: { Label("下一个", systemImage: "chevron.down") }
+                            .labelStyle(.titleAndIcon)
+                            .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                            .help("下一个项目（⌥⌘↓）")
+                            .disabled(neighbor(1) == nil)
+
+                    Menu {
+                        Button("在访达中打开") { model.open(dir) }
+                        if !readOnly { Button("改软件名…") { renameOpen = true }.disabled(running) }
+                        if data.submitted {
+                            Button("取消已提交") { setSubmitted(false) }
+                        } else if !data.historyReadOnly {
+                            Button("标记为已提交") { setSubmitted(true) }.disabled(running)
+                        }
+                        Divider()
+                        Button("从列表移除…") { removeConfirm = true }.disabled(running)
+                    } label: {
+                        Label("更多", systemImage: "ellipsis").labelStyle(.titleAndIcon)
                     }
-                } else if model.core?.pipeline.bundleNeedsContinuation(data.state) == true, !running {
-                    Banner(.warning, "交付包待更新", message: "需要继续：\(STEP_ORDER.filter { !["receipt", "build"].contains($0) && !["done", "skipped"].contains(data.stepStatus($0)) }.map { UI_STEP_LABELS[$0] ?? $0 }.joined(separator: "、"))（可能调用 AI）") {
-                        Button("继续") { model.core?.run(dir) }.buttonStyle(.primary)
+
+                }
+            }
+            .padding(.horizontal, Spacing.xl)
+            .padding(.vertical, Spacing.sm)
+
+            PageScroll {
+                if contentReady {
+                    HStack(spacing: Spacing.xs) {
+                        if data.state["bundleUpdating"].isTruthy { TagView(text: "交付包更新中", tone: .blue) }
+                        if data.origin == "imported" { TagView(text: "历史") }
+                        Spacer()
                     }
-                }
-                if let notice = data.state["bundleUpdateNotice"]?.string {
-                    Banner(.warning, notice)
-                }
-                if let step = waitingStep, step != "build", !running {
-                    Banner(.warning, step == "plan" ? "界面规划已生成，请在「规划」里检查，确认后继续生图" : data.stepMessage(step) ?? "「\(UI_STEP_LABELS[step] ?? step)」等待确认") {
-                        if step == "plan" {
-                            Button("确认规划，继续") {
-                                Task { await model.perform { _ = try await model.core?.pipeline.confirmPlan(dir) } }
+                    if data.submitted {
+                        Banner(.info, "已提交，只能查看", message: "\(data.submittedAt.map { "标记于 \(formatTime($0))。" } ?? "")不能运行、改文字、改图或换模板，批量操作也会跳过它。要修改请先取消已提交。") {
+                            Button("取消已提交") { setSubmitted(false) }.buttonStyle(.secondary)
+                        }
+                    } else if data.historyReadOnly {
+                        Banner(.info, "这个旧项目只有交付包，没有文案和截图源文件，只能查看。")
+                    }
+                    if model.codeBatch?.current == dir {
+                        Banner(.info, "正在更新这个项目的代码材料…", message: "重排代码 Word、PDF 和 TXT 开头，几秒钟。")
+                    } else if model.codeBatch?.pending.contains(dir) == true {
+                        Banner(.info, "排在更新代码材料的队伍里，轮到它时会自动处理")
+                    }
+                    if let lastError = data.state["lastError"]?.string, !running, !data.submitted {
+                        let error = splitDiagnostics(lastError)
+                        Banner(.error, "需要处理", message: error.text) {
+                            if let path = error.path, FS.exists(path) {
+                                Button("查看诊断文件") { model.open(path) }.buttonStyle(.secondary)
                             }
-                            .buttonStyle(.primary)
-                        } else {
-                            Button("去确认截图") { tab = .editor }
-                                .buttonStyle(.secondary)
                         }
                     }
-                }
-                if let live {
-                    LivePanel(live: live, data: data)
-                }
-                switch activeTab {
-                case .overview:
-                    VStack(alignment: .leading, spacing: Spacing.lg) {
-                        OverviewTab(data: data, running: running, onChanged: refresh)
-                        if !readOnly {
-                            HStack(spacing: Spacing.sm) {
-                                Button("批量修改意见", systemImage: "text.bubble") { feedbackOpen.toggle() }
-                                if !data.historyReadOnly {
-                                    Button("整个重新生成…", systemImage: "arrow.clockwise") { regenerateConfirm = true }.disabled(running)
+                    if let error = data.state["bundleUpdateError"]?.string, !data.readOnly {
+                        Banner(.error, "交付包更新失败", message: error) {
+                            Button("重试") { Task { await model.core?.retryBundleUpdate(dir) } }
+                        }
+                    } else if model.core?.pipeline.bundleNeedsContinuation(data.state) == true, !running {
+                        Banner(.warning, "交付包待更新", message: "需要继续：\(STEP_ORDER.filter { !["receipt", "build"].contains($0) && !["done", "skipped"].contains(data.stepStatus($0)) }.map { UI_STEP_LABELS[$0] ?? $0 }.joined(separator: "、"))（可能调用 AI）") {
+                            Button("继续") { model.core?.run(dir) }.buttonStyle(.primary)
+                        }
+                    }
+                    if let notice = data.state["bundleUpdateNotice"]?.string {
+                        Banner(.warning, notice)
+                    }
+                    if let step = waitingStep, step != "build", !running {
+                        Banner(.warning, step == "plan" ? "界面规划已生成，请在「规划」里检查，确认后继续生图" : data.stepMessage(step) ?? "「\(UI_STEP_LABELS[step] ?? step)」等待确认") {
+                            if step == "plan" {
+                                Button("确认规划，继续") {
+                                    Task { await model.perform { _ = try await model.core?.pipeline.confirmPlan(dir) } }
+                                }
+                                .buttonStyle(.primary)
+                            } else {
+                                Button("去确认截图") { tab = .editor }
+                                    .buttonStyle(.secondary)
+                            }
+                        }
+                    }
+                    if let live {
+                        LivePanel(live: live, data: data)
+                    }
+                    switch activeTab {
+                    case .overview:
+                        VStack(alignment: .leading, spacing: Spacing.lg) {
+                            OverviewTab(data: data, running: running, onChanged: refresh)
+                            if !readOnly {
+                                HStack(spacing: Spacing.sm) {
+                                    Button(data.pendingFeedback.isEmpty ? "批量修改意见" : "批量修改意见（\(data.pendingFeedback.count)）", systemImage: "text.bubble") { feedbackOpen.toggle() }
+                                    if !data.historyReadOnly {
+                                        Button("整个重新生成…", systemImage: "arrow.clockwise") { regenerateConfirm = true }.disabled(running)
+                                    }
                                 }
                             }
                         }
+                    case .plan: PlanTab(data: data, running: running, onChanged: refresh)
+                    case .editor: EditorTab(data: data, running: running, onChanged: refresh)
+                    case .delivery: DeliveryTab(data: data, running: running, onChanged: refresh)
                     }
-                case .plan: PlanTab(data: data, running: running, onChanged: refresh)
-                case .editor: EditorTab(data: data, running: running, onChanged: refresh)
-                case .delivery: DeliveryTab(data: data, running: running, onChanged: refresh)
+                } else {
+                    Text("正在载入内容…").foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: Metrics.gridShotHeight)
                 }
-            } else {
-                Text("正在载入内容…").foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: Metrics.gridShotHeight)
             }
-        }
-        .task {
-            // 工具栏布局完成后再挂载正文，避免同一帧创建全部编辑控件。
-            guard !contentReady else { return }
-            try? await Task.sleep(for: .milliseconds(50))
-            if !Task.isCancelled { contentReady = true }
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                TagView(text: status.label, tone: status.tone).bloom(trigger: bloomTrigger)
+            .task {
+                // 工具栏布局完成后再挂载正文，避免同一帧创建全部编辑控件。
+                guard !contentReady else { return }
+                try? await Task.sleep(for: .milliseconds(50))
+                if !Task.isCancelled { contentReady = true }
             }
-            ToolbarItem(placement: .principal) {
-                SegmentedTabs(selection: Binding(get: { activeTab }, set: { tab = $0 }), items: [
-                    .init(value: .overview, title: "概览"),
-                    .init(value: .plan, title: "规划"),
-                    .init(value: .editor, title: "编辑", count: data.screens.count),
-                    .init(value: .delivery, title: "交付"),
-                ])
-            }
-            ToolbarItemGroup(placement: .primaryAction) {
-                if running {
-                    Button {
-                        model.core?.cancel(dir)
-                    } label: {
-                        Label("停止", systemImage: "stop.fill")
-                    }
-                    .buttonStyle(.secondary)
-                    .help("停止")
-                } else if !readOnly, model.core?.pipeline.bundleNeedsContinuation(data.state) == true {
-                    Button {
-                        model.core?.run(dir)
-                    } label: {
-                        Label("继续", systemImage: "play.fill")
-                            .labelStyle(.titleAndIcon)
-                    }
-                    .buttonStyle(.primary)
-                    .help("继续")
-                }
-                Button { go(-1) } label: { Label("上一个项目", systemImage: "chevron.up") }
-                        .keyboardShortcut(.upArrow, modifiers: [.command, .option])
-                        .help("上一个项目（⌥⌘↑）")
-                        .disabled(neighbor(-1) == nil)
-                Button { go(1) } label: { Label("下一个项目", systemImage: "chevron.down") }
-                        .keyboardShortcut(.downArrow, modifiers: [.command, .option])
-                        .help("下一个项目（⌥⌘↓）")
-                        .disabled(neighbor(1) == nil)
-
-                Menu {
-                    Button("在访达中打开") { model.open(dir) }
-                    if !readOnly { Button("改软件名…") { renameOpen = true }.disabled(running) }
-                    if data.submitted {
-                        Button("取消已提交") { setSubmitted(false) }
-                    } else if !data.historyReadOnly {
-                        Button("标记为已提交") { setSubmitted(true) }.disabled(running)
-                    }
-                    Divider()
-                    Button("从列表移除…") { removeConfirm = true }.disabled(running)
-                } label: {
-                    Label("更多", systemImage: "ellipsis")
-                }
-
-            }
-        }
-        .inspector(isPresented: $feedbackOpen) {
-            FeedbackPanel(data: data, running: running, onChanged: refresh)
-                .inspectorColumnWidth(min: 320, ideal: 360, max: 560)
         }
         .sheet(isPresented: $renameOpen) {
             RenameSheet(dir: dir, name: data.name)

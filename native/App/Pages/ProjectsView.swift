@@ -16,6 +16,8 @@ struct ProjectsView: View {
     @State var initialEntranceGroup: ProjectGroup?
     @State var datePickerOpen = false
     @State var selection = Set<String>()
+    @State var queueExpanded = false
+    @FocusState var searchFocused: Bool
     @State var exportDirs: ExportRequest?
     @State var removeTargets: [ProjectRow]?
     @State var batchEdit: BatchEditRequest?
@@ -47,40 +49,85 @@ struct ProjectsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: Spacing.md) {
-                SetupHint()
-                QueueBar()
-                groupBar
-                if let only = model.listOnly {
-                    Banner(.info, "只显示名单里的 \(only.count) 个项目", message: "分组、时间、批次筛选暂不生效。") {
-                        Button("显示全部") { model.listOnly = nil }.buttonStyle(.secondary)
+        Group {
+            // 保留列表实例与滚动位置，进入项目时禁用交互，避免返回时重建原生表格。
+            VStack(spacing: 0) {
+                Text(subtitle).textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Spacing.xl).padding(.top, Spacing.sm)
+                toolbar.padding(.horizontal, Spacing.xl).padding(.vertical, Spacing.sm)
+                VStack(spacing: Spacing.md) {
+                    SetupHint()
+                    QueueBar(expanded: $queueExpanded)
+                    HStack(spacing: Spacing.md) {
+                        groupBar
+                        HStack(spacing: Spacing.xs) {
+                            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                            TextField("在全部项目里搜索软件名", text: Binding(get: { model.listQuery }, set: { model.listQuery = $0 }))
+                                .textFieldStyle(.roundedBorder)
+                                .focused($searchFocused)
+                                .onExitCommand { model.listQuery = ""; searchFocused = false }
+                            if !query.isEmpty {
+                                Button { model.listQuery = "" } label: { Image(systemName: "xmark.circle.fill") }
+                                    .buttonStyle(.plain)
+                                    .help("清除搜索")
+                                    .accessibilityLabel("清除搜索")
+                            }
+                        }
+                        .frame(width: Metrics.sidebarWidth)
+                    }
+                    if let only = model.listOnly {
+                        Banner(.info, "只显示名单里的 \(only.count) 个项目", message: "分组、时间、批次筛选暂不生效。") {
+                            Button("显示全部") { model.listOnly = nil }.buttonStyle(.secondary)
+                        }
+                    }
+                    if !query.isEmpty, model.listOnly == nil {
+                        Banner(.info, "正在全部项目里搜索", message: "分组、时间、批次筛选暂不生效；清空搜索后恢复。")
+                    }
+                    if let batch = model.codeBatch {
+                        CodeBatchBanner(batch: batch, name: { dir in model.projects.first { $0.dir == dir }?.name ?? Path.basename(dir) })
+                    } else if applyingCodeTemplate {
+                        Banner(.info, "正在准备更新代码材料…")
+                    }
+                    if let job = model.pdfJob {
+                        Banner(.info, "正在重新导出 PDF：\(job.index + 1)/\(job.total)（\(model.projects.first { $0.dir == job.current }?.name ?? "")）")
                     }
                 }
-                if !query.isEmpty, model.listOnly == nil {
-                    Banner(.info, "正在全部项目里搜索", message: "分组、时间、批次筛选暂不生效；清空搜索后恢复。")
-                }
-                if let batch = model.codeBatch {
-                    CodeBatchBanner(batch: batch, name: { dir in model.projects.first { $0.dir == dir }?.name ?? Path.basename(dir) })
-                } else if applyingCodeTemplate {
-                    Banner(.info, "正在准备更新代码材料…")
-                }
-                if let job = model.pdfJob {
-                    Banner(.info, "正在重新导出 PDF：\(job.index + 1)/\(job.total)（\(model.projects.first { $0.dir == job.current }?.name ?? "")）")
-                }
-            }
-            .padding(.horizontal, Spacing.xl)
-            .padding(.top, Spacing.md)
-            .padding(.bottom, hasTopContent ? Spacing.md : 0)
-            // 项目页覆盖列表时卸载表格，避免离开导航栈后 AppKit 仍回调已销毁的行。
-            if model.projectPath.isEmpty {
+                .padding(.horizontal, Spacing.xl)
+                .padding(.top, Spacing.md)
+                .padding(.bottom, hasTopContent ? Spacing.md : 0)
                 table
             }
         }
-        .navigationTitle("项目")
+        .opacity((model.projectPath.isEmpty && (model.section == .projects || model.section == nil)) ? 1 : 0)
+        .allowsHitTesting((model.projectPath.isEmpty && (model.section == .projects || model.section == nil)))
+        .accessibilityHidden(!(model.projectPath.isEmpty && (model.section == .projects || model.section == nil)))
+        .onChange(of: model.projectPath) { previous, path in
+            if !path.isEmpty {
+                searchFocused = false
+                NSApp.keyWindow?.makeFirstResponder(nil)
+            } else if let dir = previous.last, selection != [dir] {
+                selection = [dir]
+            }
+        }
+        .task(id: model.projectPath.last) {
+            guard let dir = model.projectPath.last else { return }
+            // 列表此时不可见；等详情首轮布局完成，再准备返回时的选中项。
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled, model.projectPath.last == dir else { return }
+            if selection != [dir] { selection = [dir] }
+        }
+        .onChange(of: model.section) { _, section in
+            if section != .projects && section != nil {
+                searchFocused = false
+                datePickerOpen = false
+                NSApp.keyWindow?.makeFirstResponder(nil)
+            }
+        }
         .onChange(of: model.projectsLoaded, initial: true) { _, loaded in
             if loaded, ProjectGroup(rawValue: model.listStatus) == nil { model.listStatus = activeGroup.rawValue }
         }
+        .onChange(of: model.devQueueExpanded, initial: true) { _, value in queueExpanded = value }
         .onChange(of: model.devSelection) { _, next in if let next { selection = next; checkMode = next.count > 1 } }
         // 搜索、筛选后看不见的项目不再算选中，批量操作只作用于列表里看得到的（和访达一样）
         .onChange(of: selection.isEmpty) { _, empty in if empty { checkMode = false } }
@@ -110,8 +157,13 @@ struct ProjectsView: View {
             else if value.hasPrefix("date:"), let date = ISO8601DateFormatter().date(from: value.dropFirst(5) + "T12:00:00Z") { model.listPickedDate = date; model.listTime = "date" }
             else { model.listTime = value }
         }
-        .navigationSubtitle(subtitle)
-        .searchable(text: Binding(get: { model.listQuery }, set: { model.listQuery = $0 }), placement: .toolbar, prompt: "在全部项目里搜索软件名")
+        .background {
+            if (model.projectPath.isEmpty && (model.section == .projects || model.section == nil)) {
+                Button("搜索项目") { searchFocused = true }
+                    .keyboardShortcut("f")
+                    .hidden()
+            }
+        }
         // 自己换了搜索或筛选，刚看过的项目就不再特意留着
         .onChange(of: "\(model.listQuery)|\(model.listStatus)|\(model.listTime)|\(model.listBatch)") { _, _ in model.stickyProject = nil }
         .onChange(of: model.devNameListText) { _, value in if value != nil { batchEdit = BatchEditRequest(dirs: []) } }
@@ -119,12 +171,6 @@ struct ProjectsView: View {
             guard let mode = value?.components(separatedBy: "#").first, !selection.isEmpty else { return }
             startCodeTemplateBatch(rows.map(\.dir).filter(selection.contains), mode: mode, templateId: nil)
         }
-        .onChange(of: model.listSelectRequest) { _, dir in
-            guard let dir else { return }
-            selection = [dir]
-            model.listSelectRequest = nil
-        }
-        .toolbar { toolbar }
         .toolbarRole(.editor)
         .sheet(item: $exportDirs) { request in
             ExportSheet(dirs: request.dirs) { clearSelection() }

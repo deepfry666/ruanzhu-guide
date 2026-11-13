@@ -108,8 +108,6 @@ final class AppModel {
     var listOnly: Set<String>?
     /// 刚看过的项目：回到列表时，即使状态变了不符合筛选也照样显示，直到换筛选或搜别的
     var stickyProject: String?
-    /// 从项目页回到列表时选中它
-    var listSelectRequest: String?
     /// 上一个项目停留的页面
     var lastProjectTab: ProjectTab?
     var modelsTab = "providers"

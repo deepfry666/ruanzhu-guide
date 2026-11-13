@@ -27,7 +27,7 @@ struct ProgressCell: View {
 
 /// 批量处理：运行中 / 排队 / 完成数量，同时处理几个，暂停、继续。
 struct QueueBar: View {
-    @State var expanded = false
+    @Binding var expanded: Bool
     @Environment(AppModel.self) var model
 
     /// 空闲时（没有运行、排队、暂停或需要处理的）不占位置
@@ -94,7 +94,6 @@ struct QueueBar: View {
             .padding(.horizontal, Spacing.lg)
             .padding(.vertical, Spacing.sm)
             .surface()
-            .onChange(of: model.devQueueExpanded, initial: true) { _, value in expanded = value }
         }
     }
 }

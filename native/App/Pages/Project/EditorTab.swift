@@ -68,6 +68,7 @@ struct EditorTab: View {
     }
 
     @State var selectedScreen = ""
+    @State private var detailReady = false
 
     /// 首次创建文字控件时就带入文案，避免出现后再填充空状态触发整页布局。
     init(data: ProjectData, running: Bool, onChanged: @escaping () -> Void) {
@@ -100,10 +101,13 @@ struct EditorTab: View {
             } else {
                 VStack(alignment: .leading, spacing: Spacing.lg) {
                     statusLine
-                    HStack(alignment: .top, spacing: Spacing.xl) {
+                    AdaptiveColumns(breakpoint: Metrics.sidebarWidth + Metrics.editorImageWidth + Spacing.xl, leadingWidth: Metrics.sidebarWidth) {
                         screenshotList.frame(width: Metrics.sidebarWidth)
                         VStack(alignment: .leading, spacing: Spacing.lg) {
-                            if selectedScreen == "overview" { coverEditor }
+                            if !detailReady {
+                                Text("正在载入编辑内容…").foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, minHeight: Metrics.gridShotHeight)
+                            } else if selectedScreen == "overview" { coverEditor }
                             else if selectedScreen == "design" { designEditor }
                             else if let index = data.screens.firstIndex(where: { $0.id == selectedScreen }) ?? data.screens.indices.first {
                                 let screen = data.screens[index]
@@ -123,7 +127,13 @@ struct EditorTab: View {
             guard AppModel.isTrial, let value = note.object as? String, let index = Int(value), data.screens.indices.contains(index) else { return }
             selectedScreen = data.screens[index].id
         }
-        .onAppear(perform: syncFromContent)
+        .task {
+            // 先显示截图导航，再创建大图和文字控件；中途离开时取消后续挂载。
+            guard !detailReady else { return }
+            try? await Task.sleep(for: .milliseconds(50))
+            if !Task.isCancelled { detailReady = true }
+        }
+        .onAppear { syncFromContent() }
         .onChange(of: contentKey) { _, _ in syncFromContent() }
         // 停止输入 0.8 秒后自动保存；继续输入会重新计时
         .task(id: editsKey) {
