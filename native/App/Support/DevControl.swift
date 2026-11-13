@@ -76,7 +76,9 @@ final class DevControl {
             guard AppModel.isTrial else { return }
             NotificationCenter.default.post(name: Notification.Name("trialEditorScreen"), object: value)
         case "projectTab": model.devProjectTab = ProjectTab(name: value)
-        case "feedback": model.devFeedbackOpen = value == "open"
+        case "feedback":
+            if value == "open" { model.batchModification = BatchModificationRequest(dirs: model.projectPath.last.map { [$0] } ?? []) }
+            else { model.batchModification = nil }
         case "newMode":
             guard ["single", "batch"].contains(value) else { return }
             model.devNewMode = value

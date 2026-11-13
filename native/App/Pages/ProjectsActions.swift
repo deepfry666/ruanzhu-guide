@@ -46,7 +46,7 @@ extension ProjectsView {
             Button("开始处理") { start(targets) }
             Button("导出…") { exportDirs = ExportRequest(dirs: targets.map(\.dir)) }
         }
-        Button("批量修改…") { batchEdit = BatchEditRequest(dirs: targets.map(\.dir)) }
+        Button("批量修改…") { model.batchModification = BatchModificationRequest(dirs: targets.map(\.dir), finished: clearSelection) }
             .disabled(applyingCodeTemplate || model.pdfJob != nil)
         Divider()
         if targets.contains(where: { !$0.submitted && !$0.historyReadOnly }) {

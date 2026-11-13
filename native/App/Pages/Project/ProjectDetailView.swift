@@ -13,8 +13,6 @@ enum ProjectTab: String, CaseIterable, Identifiable {
 
 struct ProjectDetailView: View {
     let dir: String
-    @Binding var feedbackOpen: Bool
-    let onInspectorData: (ProjectData) -> Void
     @Environment(AppModel.self) private var model
     @State private var data: ProjectData?
     @State private var contentReady = false
@@ -50,10 +48,7 @@ struct ProjectDetailView: View {
         // 回到列表时这个项目照样显示（即使状态变了不符合筛选）。
         .onAppear { model.stickyProject = dir }
         .onChange(of: model.devProjectTab) { _, next in if let next { tab = next } }
-        .onChange(of: feedbackOpen) { _, open in
-            if open, let data { onInspectorData(data) }
-        }
-        .onChange(of: model.devFeedbackOpen) { _, next in if let next { feedbackOpen = next } }
+
     }
 
     private var backToProjects: some View {
@@ -84,7 +79,6 @@ struct ProjectDetailView: View {
             // 默认标签只决定首次打开；保存、恢复旧图和后台任务不替用户切页。
             if tab == nil { tab = next.status == "done" ? .editor : .overview }
             data = next
-            if feedbackOpen { onInspectorData(next) }
             loadError = nil
         } catch {
             loadError = messageOf(error)
@@ -186,6 +180,7 @@ struct ProjectDetailView: View {
                             Button("标记为已提交") { setSubmitted(true) }.disabled(running)
                         }
                         if !readOnly {
+                            Button("批量修改…", systemImage: "list.bullet.clipboard") { model.batchModification = BatchModificationRequest(dirs: [dir]) }.disabled(running)
                             Button("从头重做…", systemImage: "arrow.clockwise") { regenerateConfirm = true }.disabled(running)
                         }
                         Divider()
@@ -258,11 +253,7 @@ struct ProjectDetailView: View {
                     case .overview:
                         VStack(alignment: .leading, spacing: Spacing.lg) {
                             OverviewTab(data: data, running: running, onChanged: refresh)
-                            if !readOnly {
-                                HStack(spacing: Spacing.sm) {
-                                    Button(data.pendingFeedback.isEmpty ? "批量修改意见" : "批量修改意见（\(data.pendingFeedback.count)）", systemImage: "text.bubble") { feedbackOpen.toggle() }
-                                }
-                            }
+                            PendingModificationSummary(data: data)
                         }
                     case .plan: PlanTab(data: data, running: running, onChanged: refresh)
                     case .editor: EditorTab(data: data, running: running, onChanged: refresh)

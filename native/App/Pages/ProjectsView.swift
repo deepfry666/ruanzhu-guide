@@ -20,7 +20,6 @@ struct ProjectsView: View {
     @FocusState var searchFocused: Bool
     @State var exportDirs: ExportRequest?
     @State var removeTargets: [ProjectRow]?
-    @State var batchEdit: BatchEditRequest?
     @State var applyingCodeTemplate = false
     /// 用勾选框勾过：之后单击行也是「加选 / 取消」，不会把已勾选的清掉
     @State var checkMode = false
@@ -35,12 +34,6 @@ struct ProjectsView: View {
         let id = UUID()
         let dirs: [String]
         let skipped: [String]
-    }
-
-    /// 批量修改：选中的项目（空表示先粘贴名单）
-    struct BatchEditRequest: Identifiable {
-        let id = UUID()
-        let dirs: [String]
     }
 
     struct ExportRequest: Identifiable {
@@ -166,7 +159,7 @@ struct ProjectsView: View {
         }
         // 自己换了搜索或筛选，刚看过的项目就不再特意留着
         .onChange(of: "\(model.listQuery)|\(model.listStatus)|\(model.listTime)|\(model.listBatch)") { _, _ in model.stickyProject = nil }
-        .onChange(of: model.devNameListText) { _, value in if value != nil { batchEdit = BatchEditRequest(dirs: []) } }
+        .onChange(of: model.devNameListText) { _, value in if value != nil { model.batchModification = BatchModificationRequest(dirs: [], finished: clearSelection) } }
         .onChange(of: model.devCodeBatch) { _, value in
             guard let mode = value?.components(separatedBy: "#").first, !selection.isEmpty else { return }
             startCodeTemplateBatch(rows.map(\.dir).filter(selection.contains), mode: mode, templateId: nil)
@@ -174,12 +167,6 @@ struct ProjectsView: View {
         .toolbarRole(.editor)
         .sheet(item: $exportDirs) { request in
             ExportSheet(dirs: request.dirs) { clearSelection() }
-        }
-        .sheet(item: $batchEdit) { request in
-            BatchEditSheet(initial: request.dirs) {
-                batchEdit = nil
-                clearSelection()
-            } cancel: { batchEdit = nil }
         }
         .confirmationDialog(removeTargets.map { $0.count == 1 ? "移除「\($0[0].name)」？" : "移除 \($0.count) 个项目？" } ?? "", isPresented: Binding(get: { removeTargets != nil }, set: { if !$0 { removeTargets = nil } }), titleVisibility: .visible) {
             Button("只从列表移除") { remove(removeTargets ?? [], deleteFolder: false) }

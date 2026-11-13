@@ -89,6 +89,7 @@ final class AppModel {
 
     // 导航
     var newProjectPresented = false
+    var batchModification: BatchModificationRequest?
     var section: SidebarItem? = .projects
     var projectPath: [String] = []
     /// 历史项目列表当前显示的顺序（项目页的上一个 / 下一个用）
@@ -144,7 +145,6 @@ final class AppModel {
 
     // 开发自检（DevControl）
     var devProjectTab: ProjectTab?
-    var devFeedbackOpen: Bool?
     var devNewMode: String?
     var devSelection: Set<String>?
     /// 开发自检：打开「按名单选择」并填好名单（| 分隔）

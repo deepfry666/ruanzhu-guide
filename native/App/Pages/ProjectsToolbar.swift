@@ -62,7 +62,7 @@ extension ProjectsView {
                     .labelStyle(.titleAndIcon)
                     .disabled(model.trialMeasure)
                 if selection.isEmpty {
-                    Button { batchEdit = BatchEditRequest(dirs: []) } label: { Label("批量修改", systemImage: "list.bullet.clipboard") }
+                    Button { model.batchModification = BatchModificationRequest(dirs: [], finished: clearSelection) } label: { Label("批量修改", systemImage: "list.bullet.clipboard") }
                         .labelStyle(.titleAndIcon)
                         .help("批量修改：粘一份软件名清单（或先多选项目），写要改什么，一次改完")
                     Button {
