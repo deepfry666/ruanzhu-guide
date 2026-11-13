@@ -5,7 +5,7 @@ extension EditorTab {
     var coverEditor: some View {
         SettingsGroup(title: "封面介绍（也会写进 TXT 的【软件的主要功能】）", trailing: data.readOnly ? nil : AnyView(HStack(spacing: Spacing.sm) {
             historyMenu("overview") { overview = $0 }
-            Button("让大模型重写") { rewrite = (["overview"], "封面介绍") }.disabled(running)
+            Button("按原要求修改…") { rewrite = (["overview"], "封面介绍") }.disabled(!editable)
         })) {
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 TextEditor(text: $overview).textStyle(Typography.body).frame(minHeight: 80).scrollContentBackground(.hidden).disabled(!editable)

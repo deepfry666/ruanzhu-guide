@@ -183,6 +183,9 @@ struct ProjectDetailView: View {
                         } else if !data.historyReadOnly {
                             Button("标记为已提交") { setSubmitted(true) }.disabled(running)
                         }
+                        if !readOnly {
+                            Button("从头重做…", systemImage: "arrow.clockwise") { regenerateConfirm = true }.disabled(running)
+                        }
                         Divider()
                         Button("从列表移除…") { removeConfirm = true }.disabled(running)
                     } label: {
@@ -256,9 +259,6 @@ struct ProjectDetailView: View {
                             if !readOnly {
                                 HStack(spacing: Spacing.sm) {
                                     Button(data.pendingFeedback.isEmpty ? "批量修改意见" : "批量修改意见（\(data.pendingFeedback.count)）", systemImage: "text.bubble") { feedbackOpen.toggle() }
-                                    if !data.historyReadOnly {
-                                        Button("整个重新生成…", systemImage: "arrow.clockwise") { regenerateConfirm = true }.disabled(running)
-                                    }
                                 }
                             }
                         }
@@ -280,8 +280,8 @@ struct ProjectDetailView: View {
         .sheet(isPresented: $renameOpen) {
             RenameSheet(dir: dir, name: data.name)
         }
-        .alert("整个重新生成「\(data.name)」？", isPresented: $regenerateConfirm) {
-            Button("重新生成", role: .destructive) { regenerate(data) }
+        .alert("从头重做「\(data.name)」？", isPresented: $regenerateConfirm) {
+            Button("从头重做", role: .destructive) { regenerate(data) }
             Button("取消", role: .cancel) {}
         } message: {
             Text("旧的规划、截图和说明先归档到项目的 archive 文件夹，交付包在重新出包时归档，然后从头重新规划、生图、写说明。屏数、重点、补充说明不变，日期按今天算；代码来源不变。")
@@ -294,10 +294,10 @@ struct ProjectDetailView: View {
         }
     }
 
-    /// 整个重新生成：沿用这个项目的屏数、重点、补充说明、平台，日期按今天
+    /// 从头重做：沿用这个项目的屏数、重点、补充说明、平台，日期按今天
     func regenerate(_ data: ProjectData) {
         Task {
-            if await model.perform("已开始整个重新生成，旧文件已归档", { try await model.core?.regenerateProject(dir) }) {
+            if await model.perform("已开始从头重做，旧文件已归档", { try await model.core?.regenerateProject(dir) }) {
                 await model.reloadProjects()
                 await reload()
             }

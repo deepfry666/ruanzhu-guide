@@ -40,12 +40,10 @@ extension EditorTab {
                     Button("没有软件名，通过") { manual(screen, true) }.buttonStyle(.primary).controlSize(.small)
                     Button("不合格", role: .destructive) { manual(screen, false) }.controlSize(.small)
                 }
-                .disabled(running)
+                .disabled(!editable)
             }
             if !data.readOnly {
                 HStack(spacing: Spacing.xs) {
-                    Button { regenerate = screen } label: { Label("重新生成", systemImage: "arrow.clockwise").labelStyle(.iconOnly) }
-                        .help("按原来的要求重新生成这一屏（花一张图的费用）")
                     Button { history = screen } label: {
                         HStack(spacing: Spacing.xs) {
                             Label("以前的截图", systemImage: "clock.arrow.circlepath").labelStyle(.iconOnly)
@@ -78,7 +76,7 @@ extension EditorTab {
                     .fixedSize()
                 }
                 .buttonStyle(.borderless)
-                .disabled(running)
+                .disabled(!editable)
             }
         }
     }

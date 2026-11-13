@@ -3,7 +3,7 @@ import SwiftUI
 
 /// 编辑：左侧选择截图，右侧查看大图并修改说明。
 /// - 文字直接改，自动保存，每处都能从「历史」换回以前的文字；
-/// - 每一行下面写「要怎么改」，点「改图」或「只改文字」，不用先攒清单再整理；
+/// - 每屏通过一个「修改」入口选择图和文字或只改文字，留空按原要求重做；
 /// - 截图可以重新生成、换回以前的截图、换备选图；封面介绍和设计说明同样直接改。
 struct EditorTab: View {
     let data: ProjectData
@@ -35,7 +35,9 @@ struct EditorTab: View {
     @State var promptEdit: ScreenItem?
     @State var alternates: ScreenItem?
     @State var history: ScreenItem?
-    @State var regenerate: ScreenItem?
+    @State var changeScopes: [String: ScreenChangeScope] = [:]
+    @State var pendingChange: ScreenChangeRequest?
+    @State var submittingChange = false
 
     enum SaveState: Equatable {
         case idle, saving, saved(Date), failed(String)
@@ -43,7 +45,7 @@ struct EditorTab: View {
 
     var floor: Int { model.settings.pipeline.featureTextFloor }
     var contentScreens: [JSON] { data.content?["screens"].items ?? [] }
-    var editable: Bool { !data.readOnly && !running }
+    var editable: Bool { !data.readOnly && !running && !submittingChange }
 
     var contentKey: String {
         guard let content = data.content else { return "" }
@@ -173,24 +175,22 @@ struct EditorTab: View {
                 }
             }
         }
-        .confirmationDialog(regenerate.map { "重新生成 \($0.id)？" } ?? "", isPresented: Binding(get: { regenerate != nil }, set: { if !$0 { regenerate = nil } }), titleVisibility: .visible) {
-            Button("重新生成") {
-                guard let screen = regenerate else { return }
-                Task { await model.perform { _ = try model.core?.pipeline.regenerateScreen(data.dir, screen.id) } }
-            }
-        } message: {
-            Text("会花一张图的费用，按原来的要求再生成一次。想改什么的话，在这一行下面写「要怎么改」再点「改图」。现在这张会存进「以前的截图」。")
+        .confirmationDialog("确认修改？", isPresented: Binding(get: { pendingChange != nil }, set: { if !$0 { pendingChange = nil } }), titleVisibility: .visible, presenting: pendingChange) { change in
+            Button("确认修改") { submitChange(change) }
+            Button("取消", role: .cancel) { pendingChange = nil }
+        } message: { change in
+            Text(change.confirmation)
         }
-        .confirmationDialog(rewrite.map { "让大模型重写\($0.label)？" } ?? "", isPresented: Binding(get: { rewrite != nil }, set: { if !$0 { rewrite = nil } }), titleVisibility: .visible) {
-            Button("重写") {
+        .confirmationDialog(rewrite.map { "按原要求修改\($0.label)？" } ?? "", isPresented: Binding(get: { rewrite != nil }, set: { if !$0 { rewrite = nil } }), titleVisibility: .visible) {
+            Button("确认修改") {
                 guard let target = rewrite else { return }
                 Task {
-                    await autosave()
+                    guard await autosave() else { return }
                     await model.perform { _ = try await model.core?.pipeline.rewriteContent(data.dir, target.ids) }
                 }
             }
         } message: {
-            Text("会覆盖现在的文字（包括你改过的部分）。现在的文字会存进「历史」，不满意可以换回来。想按要求改，在这一行下面写「要怎么改」再点「只改文字」。")
+            Text("会覆盖现在的文字（包括你改过的部分）。现在的文字会存进「历史」，不满意可以换回来。这项操作会调用文字模型。")
         }
     }
 
@@ -230,8 +230,10 @@ struct EditorTab: View {
         return changedOverview == nil && patches.isEmpty && design == nil ? nil : Pending(overview: changedOverview, patches: patches, design: design)
     }
 
-    func autosave() async {
-        guard !running, let core = model.core, let change = pending() else { return }
+    @discardableResult
+    func autosave() async -> Bool {
+        guard let change = pending() else { return true }
+        guard !running, let core = model.core else { return false }
         let savedSections = sections
         saveState = .saving
         do {
@@ -245,8 +247,10 @@ struct EditorTab: View {
             if change.design != nil { baseSections = savedSections }
             saveState = .saved(Date())
             onChanged()
+            return true
         } catch {
             saveState = .failed(messageOf(error))
+            return false
         }
     }
 
