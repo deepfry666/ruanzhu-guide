@@ -11,6 +11,10 @@ struct ProjectsView: View {
     // 排序：默认按最近动过，新的在上；点表头换排法，记住上次选的
     @AppStorage("projects.sortKey") var sortKey = "recent"
     @AppStorage("projects.sortAscending") var sortAscending = false
+    @AppStorage("projects.presentation") var presentation = "list"
+    @State var gridMounted = false
+    @State var gridAnchor: String?
+    @FocusState var gridFocused: Bool
     @State var initialEntranceIDs = Set<String>()
     @State var entranceInitialized = false
     @State var initialEntranceGroup: ProjectGroup?
@@ -89,12 +93,14 @@ struct ProjectsView: View {
                 .padding(.horizontal, Spacing.xl)
                 .padding(.top, Spacing.md)
                 .padding(.bottom, hasTopContent ? Spacing.md : 0)
-                table
+                projectPresentation
             }
         }
         .opacity((model.projectPath.isEmpty && (model.section == .projects || model.section == nil)) ? 1 : 0)
         .allowsHitTesting((model.projectPath.isEmpty && (model.section == .projects || model.section == nil)))
         .accessibilityHidden(!(model.projectPath.isEmpty && (model.section == .projects || model.section == nil)))
+        .onChange(of: presentation, initial: true) { _, mode in if mode == "grid" { gridMounted = true } }
+        .onChange(of: model.devProjectPresentation) { _, mode in if let mode { presentation = mode } }
         .onChange(of: model.projectPath) { previous, path in
             if !path.isEmpty {
                 searchFocused = false

@@ -8,6 +8,11 @@ extension ProjectsView {
         let list = rows
         let indices = Dictionary(uniqueKeysWithValues: list.enumerated().map { ($0.element.dir, $0.offset) })
         return Table(list, selection: Binding(get: { selection }, set: { tableSelectionChanged($0) }), sortOrder: sortOrder) {
+            TableColumn("截图") { row in
+                ProjectThumbnailView(thumbnail: row.thumbnail, height: Metrics.thumbnailList.height)
+                    .frame(width: Metrics.thumbnailList.width, height: Metrics.thumbnailList.height)
+                    .padding(.vertical, Spacing.xs)
+            }.width(Metrics.thumbnailList.width + Spacing.sm)
             // 勾选框：不用按住 ⌘ 也能多选；勾过之后单击行也是加选 / 取消
             TableColumn("") { row in
                 Toggle("", isOn: Binding(
@@ -58,7 +63,7 @@ extension ProjectsView {
         .contextMenu(forSelectionType: String.self) { ids in
             contextMenu(ids)
         } primaryAction: { ids in
-            guard (model.section == .projects || model.section == nil), model.projectPath.isEmpty else { return }
+            guard presentation != "grid", (model.section == .projects || model.section == nil), model.projectPath.isEmpty else { return }
             // 双击（或回车）只打开双击的那一行；多选时第一下单击带来的加选 / 取消要撤回
             if let clicked = lastClicked, ids.contains(clicked) || beforeClick?.contains(clicked) == true {
                 if let before = beforeClick, before.count > 1 || checkMode { selection = before }
@@ -67,8 +72,8 @@ extension ProjectsView {
                 model.openProject(dir)
             }
         }
-        .onDeleteCommand { if model.projectPath.isEmpty && (model.section == .projects || model.section == nil) { askRemove(selectedRows) } }
-        .onExitCommand { if model.projectPath.isEmpty && (model.section == .projects || model.section == nil) { clearSelection() } }
+        .onDeleteCommand { if presentation != "grid" && model.projectPath.isEmpty && (model.section == .projects || model.section == nil) { askRemove(selectedRows) } }
+        .onExitCommand { if presentation != "grid" && model.projectPath.isEmpty && (model.section == .projects || model.section == nil) { clearSelection() } }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if !selection.isEmpty { selectionBar }
         }

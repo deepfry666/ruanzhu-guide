@@ -110,6 +110,7 @@ final class DevControl {
         case "queueDetails": model.devQueueExpanded = value == "1"
         case "measureAll":
             if model.trialMeasure { model.listOnly = value == "1" ? Set(model.projects.map(\.dir)) : nil }
+        case "presentation": if ["list", "grid"].contains(value) { model.devProjectPresentation = value }
         case "scroll": startScroll(value == "1")
         case "reload": Task { await model.reloadProjects() }
         case "listSnapshot":
@@ -144,10 +145,16 @@ final class DevControl {
                     if let table = view as? NSTableView { return table }
                     return view.subviews.lazy.compactMap { findTable($0) }.first
                 }
-                guard let content = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain })?.contentView,
-                      let table = findTable(content), let scroll = table.enclosingScrollView else { return }
+                func findGridScroll(_ view: NSView) -> NSScrollView? {
+                    if let scroll = view as? NSScrollView, scroll.identifier?.rawValue == "project-grid-scroll" { return scroll }
+                    return view.subviews.lazy.compactMap { findGridScroll($0) }.first
+                }
+                guard let content = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain })?.contentView else { return }
+                let grid = UserDefaults.standard.string(forKey: "projects.presentation") == "grid"
+                guard let scroll = grid ? findGridScroll(content) : findTable(content)?.enclosingScrollView,
+                      let document = scroll.documentView else { return }
                 let clip = scroll.contentView
-                let limit = max(0, table.bounds.height - clip.bounds.height)
+                let limit = max(0, document.bounds.height - clip.bounds.height)
                 let next = min(limit, max(0, clip.bounds.minY + self.scrollDirection * 12))
                 if next >= limit { self.scrollDirection = -1 }
                 if next <= 0 { self.scrollDirection = 1 }

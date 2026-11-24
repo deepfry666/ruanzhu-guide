@@ -112,6 +112,7 @@ nonisolated struct ProjectRow: Identifiable, Hashable, Sendable {
     var readOnly: Bool { historyReadOnly || submitted }
     var status: String { json["status"]?.string ?? "idle" }
     func step(_ name: String) -> String { json["steps"]?[name]?.string ?? "pending" }
+    var thumbnail: ProjectThumbnail? { ProjectThumbnail(raw: json["thumbnail"]) }
     var hasBundle: Bool { json["hasBundle"].isTruthy }
     var bundleFiles: Int? { json["bundleFiles"]?.int }
     var bundleUpdating: Bool { json["bundleUpdating"].isTruthy }

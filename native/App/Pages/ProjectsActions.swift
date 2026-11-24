@@ -128,6 +128,7 @@ extension ProjectsView {
     /// ⌘ 点选、⇧ 连选、键盘上下键保持系统行为。
     /// 系统表格在多选时单击已选中的行会报告「什么都没选」，所以点的是哪一行按鼠标位置自己算。
     func tableSelectionChanged(_ next: Set<String>) {
+        guard presentation != "grid" else { return }
         let previous = selection
         let event = NSApp.currentEvent
         let plainClick = event.map { [.leftMouseDown, .leftMouseUp].contains($0.type) && $0.modifierFlags.intersection([.command, .shift]).isEmpty } ?? false

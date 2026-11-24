@@ -102,6 +102,7 @@ final class AppModel {
         }
     }
     var devQueueExpanded = false
+    var devProjectPresentation: String?
     var listTime = "all"
     var listBatch = "all"
     var listPickedDate = Date()

@@ -11,6 +11,7 @@ struct ScreenImage: View {
     /// 解码到的最长边像素：编辑页 440 点高，2 倍屏够用；大图预览传更大的值
     var maxPixel: Int = 1000
     @State private var loaded: NSImage?
+    @State private var loadedKey: String?
     @State private var failedKey: String?
 
     private var key: String? {
@@ -19,7 +20,8 @@ struct ScreenImage: View {
     }
 
     var body: some View {
-        let image = key.flatMap(ScreenImageCache.shared.image) ?? loaded
+        let currentKey = key
+        let image = currentKey.flatMap(ScreenImageCache.shared.image) ?? (loadedKey == currentKey ? loaded : nil)
         ZStack {
             if let image {
                 Image(nsImage: image)
@@ -33,10 +35,14 @@ struct ScreenImage: View {
             }
         }
         .animation(Motion.fade, value: image != nil)
+        .onDisappear { loaded = nil; loadedKey = nil }
         .task(id: key) {
             guard let key, let path, ScreenImageCache.shared.image(key) == nil else { return }
-            loaded = await ScreenImageCache.shared.load(path: path, key: key, maxPixel: maxPixel)
-            if loaded == nil { failedKey = key }
+            let decoded = await ScreenImageCache.shared.load(path: path, key: key, maxPixel: maxPixel)
+            guard !Task.isCancelled else { return }
+            loaded = decoded
+            loadedKey = key
+            if decoded == nil { failedKey = key }
         }
     }
 }
@@ -47,25 +53,37 @@ final class ScreenImageCache {
     private let cache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 300
+        cache.totalCostLimit = 96 * 1024 * 1024
         return cache
     }()
+
+    private var inFlight: [String: Task<DecodedImage?, Never>] = [:]
 
     func image(_ key: String) -> NSImage? { cache.object(forKey: key as NSString) }
 
     func load(path: String, key: String, maxPixel: Int) async -> NSImage? {
-        let decoded = await Task.detached(priority: .userInitiated) { () -> DecodedImage? in
-            guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil) else { return nil }
-            let options: [CFString: Any] = [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceShouldCacheImmediately: true,
-                kCGImageSourceThumbnailMaxPixelSize: maxPixel,
-            ]
-            return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary).map(DecodedImage.init)
-        }.value
+        if let image = image(key) { return image }
+        let task: Task<DecodedImage?, Never>
+        if let existing = inFlight[key] { task = existing }
+        else {
+            task = Task.detached(priority: .userInitiated) { () -> DecodedImage? in
+                guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil) else { return nil }
+                let options: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceShouldCacheImmediately: true,
+                    kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+                ]
+                return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary).map(DecodedImage.init)
+            }
+            inFlight[key] = task
+        }
+        let decoded = await task.value
+        inFlight[key] = nil
+        if let image = image(key) { return image }
         guard let cgImage = decoded?.image else { return nil }
         let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-        cache.setObject(image, forKey: key as NSString)
+        cache.setObject(image, forKey: key as NSString, cost: cgImage.width * cgImage.height * 4)
         return image
     }
 }

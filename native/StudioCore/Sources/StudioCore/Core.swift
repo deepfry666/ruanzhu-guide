@@ -135,6 +135,7 @@ public final class StudioCore: @unchecked Sendable {
         let screenCount = state["screens"].fields.count
         var summary = JSONObject()
         summary["dir"] = .string(dir)
+        summary["thumbnail"] = ProjectThumbnail.read(dir: dir, state: ProjectState(state))?.raw ?? .null
         summary["name"] = state["request"]?["softwareName"] ?? .null
         summary["origin"] = state["origin"] ?? .null
         summary["grade"] = state["imported"]?["grade"].truthyValue ?? .null
