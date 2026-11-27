@@ -18,7 +18,7 @@ struct CleanupSettings: View {
     private var chosenItems: Int { chosen.reduce(0) { $0 + $1.items.count } }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
             header
             if let result = lastResult { resultBanner(result) }
             if let scan, scan.busyProjects > 0 {
@@ -41,7 +41,7 @@ struct CleanupSettings: View {
             }
             if !groups.isEmpty { actionBar }
             Text("不会动的：截图、规划和文案、提示词、交付文件夹和压缩包、\(CLEANUP_ARCHIVE_DAYS) 天以内的归档、没有导入到软件里的项目文件夹、软件自己的数据。")
-                .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 4)
+                .textStyle(Typography.caption).foregroundStyle(Palette.textSecondary).padding(.horizontal, Spacing.xs)
         }
         .task { await refresh() }
         .onChange(of: model.devCleanup) { _, command in handleDev(command) }
@@ -54,10 +54,11 @@ struct CleanupSettings: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("清理空间").font(.title3.weight(.semibold))
-                Text("扫描各项目和工作区里可以清理的内容。扫描只读文件，勾选并确认后才会清理。").font(.callout).foregroundStyle(.secondary)
+        HStack(alignment: .firstTextBaseline, spacing: Spacing.md) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("清理空间").textStyle(Typography.title).foregroundStyle(Palette.text)
+                Text("扫描各项目和工作区里可以清理的内容。扫描只读文件，勾选并确认后才会清理。")
+                    .textStyle(Typography.body).foregroundStyle(Palette.textSecondary)
             }
             Spacer()
             if scanning { ProgressView().controlSize(.small) }
@@ -66,54 +67,57 @@ struct CleanupSettings: View {
     }
 
     private func row(_ group: CleanupGroup) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 10) {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            HStack(alignment: .top, spacing: Spacing.md) {
                 Toggle("", isOn: Binding(get: { selected.contains(group.id) }, set: { on in
                     if on { selected.insert(group.id) } else { selected.remove(group.id) }
                 }))
                 .toggleStyle(.checkbox).labelsHidden().disabled(running)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title(group)).fontWeight(.medium)
-                    Text(detail(group)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Text(title(group)).textStyle(Typography.bodyStrong).foregroundStyle(Palette.text)
+                    Text(detail(group)).textStyle(Typography.caption).foregroundStyle(Palette.textSecondary).fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer(minLength: 12)
-                Text(sizeText(group.bytes)).monospacedDigit().foregroundStyle(.secondary)
+                Spacer(minLength: Spacing.md)
+                Text(sizeText(group.bytes)).textStyle(Typography.body.number).foregroundStyle(Palette.textSecondary)
                 if group.items.count > 1 || group.kind != .workspaceLeftover {
                     Button(expanded.contains(group.id) ? "收起" : "明细") {
                         if expanded.contains(group.id) { expanded.remove(group.id) } else { expanded.insert(group.id) }
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.textAction)
                 }
             }
             if expanded.contains(group.id) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Spacing.xs) {
                     ForEach(group.items.prefix(60)) { item in
-                        HStack(spacing: 8) {
+                        HStack(spacing: Spacing.sm) {
                             Text(itemLabel(item)).lineLimit(1).truncationMode(.middle)
-                            Spacer(minLength: 8)
-                            Text(sizeText(item.bytes)).monospacedDigit()
+                            Spacer(minLength: Spacing.sm)
+                            Text(sizeText(item.bytes)).textStyle(Typography.caption.number)
                         }
-                        .font(.caption).foregroundStyle(.secondary)
+                        .textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
                     }
-                    if group.items.count > 60 { Text("另有 \(group.items.count - 60) 项…").font(.caption).foregroundStyle(.tertiary) }
+                    if group.items.count > 60 {
+                        Text("另有 \(group.items.count - 60) 项…").textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
+                    }
                 }
-                .padding(.leading, 26)
+                .padding(.leading, Spacing.xl)
             }
         }
-        .padding(.horizontal, 14).padding(.vertical, 9)
+        .padding(.horizontal, Spacing.lg).padding(.vertical, Spacing.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var actionBar: some View {
-        HStack {
-            Text(selected.isEmpty ? "还没有勾选" : "已选 \(chosenItems) 项，可腾出 \(sizeText(chosenBytes))").foregroundStyle(.secondary)
+        HStack(spacing: Spacing.sm) {
+            Text(selected.isEmpty ? "还没有勾选" : "已选 \(chosenItems) 项，可腾出 \(sizeText(chosenBytes))")
+                .textStyle(Typography.body).foregroundStyle(Palette.textSecondary)
             Spacer()
             if running { ProgressView().controlSize(.small) }
             Button("移到废纸篓…") { confirming = true }
                 .buttonStyle(.primary)
                 .disabled(selected.isEmpty || running || scanning || model.trialMeasure)
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, Spacing.xs)
     }
 
     private func resultBanner(_ result: CleanupResult) -> some View {

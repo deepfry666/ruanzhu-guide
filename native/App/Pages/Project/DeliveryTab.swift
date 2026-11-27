@@ -23,18 +23,18 @@ struct DeliveryTab: View {
                 BundleStatusCard(data: data)
                 SettingsGroup(title: "交付文件") {
                     if data.bundleFiles.isEmpty {
-                        Text("还没有交付包").foregroundStyle(.secondary).padding(Spacing.lg)
+                        Text("还没有交付包").foregroundStyle(Palette.textSecondary).padding(Spacing.lg)
                     } else {
                         ForEach(data.bundleFiles, id: \.self) { file in
                             SettingsRow(label: file) {
-                                Button("打开") { model.openDelivery(data.dir, path: Path.join(data.bundleDir, file)) }.buttonStyle(.borderless)
+                                Button("打开") { model.openDelivery(data.dir, path: Path.join(data.bundleDir, file)) }.buttonStyle(.textAction)
                             }
                         }
                     }
                 }
                 HStack(spacing: Spacing.xs) {
-                    Text("来源和每次修改都记在").foregroundStyle(.secondary)
-                    Button("generation-record.json") { model.open(Path.join(data.dir, RECORD_FILE)) }.buttonStyle(.link)
+                    Text("来源和每次修改都记在").foregroundStyle(Palette.textSecondary)
+                    Button("generation-record.json") { model.open(Path.join(data.dir, RECORD_FILE)) }.buttonStyle(.textAction)
                 }
                 .font(.caption)
                 if !data.bundleFiles.isEmpty {
@@ -80,7 +80,7 @@ struct DeliveryTab: View {
                                                 onChanged()
                                             }
                                         }
-                                        .buttonStyle(.borderless)
+                                        .buttonStyle(.textAction)
                                         .disabled(running)
                                         .help("看过 PDF 觉得可以接受，就不再提示")
                                     }
@@ -102,7 +102,7 @@ struct DeliveryTab: View {
             }
             .frame(maxWidth: .infinity)
             VStack(alignment: .leading, spacing: Spacing.lg) {
-                SettingsGroup(title: "代码模板", footer: "52 行版每页有 52 行非空原始代码，固定 60 页；历史版沿用原版式。已有交付包时换模板只重做代码 Word、PDF 和 TXT 开头，不调用 AI，旧文件先归档。", trailing: AnyView(Button("模板库") { model.go(.settings, tab: "code") }.buttonStyle(.borderless))) {
+                SettingsGroup(title: "代码模板", footer: "52 行版每页有 52 行非空原始代码，固定 60 页；历史版沿用原版式。已有交付包时换模板只重做代码 Word、PDF 和 TXT 开头，不调用 AI，旧文件先归档。", trailing: AnyView(Button("模板库") { model.go(.settings, tab: "code") }.buttonStyle(.textAction))) {
                     let enabled = model.settings.codeTemplates.enabled
                     SettingsRow(label: "用的模板", info: code["source"].truthyValue == nil ? nil : (code["locked"].isTruthy ? "已记在这个项目上，改设置不影响它。" : "还没记下，第一次生成交付包时按设置分配。")) {
                         if let label = code["templateLabel"]?.string {
@@ -110,7 +110,7 @@ struct DeliveryTab: View {
                         } else if let path = code["source"]?["path"]?.string {
                             PathText(path: path)
                         } else {
-                            Text("没有（只出说明书）").foregroundStyle(.secondary)
+                            Text("没有（只出说明书）").foregroundStyle(Palette.textSecondary)
                         }
                         // 只有交付包的历史项目也能换（只重做代码材料）；已提交的不能
                         if !data.submitted, !enabled.isEmpty {

@@ -138,26 +138,27 @@ struct UpdateSheet: View {
     let updater: UpdateController
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                Image("Logo").resizable().frame(width: 48, height: 48)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("有新版本：\(updater.release?.version ?? "")").font(.title2.weight(.semibold))
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            HStack(spacing: Spacing.md) {
+                Image("Logo").resizable().frame(width: Metrics.thumbnailEditorList, height: Metrics.thumbnailEditorList)
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Text("有新版本：\(updater.release?.version ?? "")").textStyle(Typography.title).foregroundStyle(Palette.text)
                     Text("当前版本 \(updater.currentVersion)\(updater.release.map { $0.assetSize > 0 ? "，安装包 \(String(format: "%.1f", Double($0.assetSize) / 1_048_576)) MB" : "" } ?? "")")
-                        .foregroundStyle(.secondary)
+                        .textStyle(Typography.body)
+                        .foregroundStyle(Palette.textSecondary)
                 }
             }
             ScrollView {
-                Text(notes).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+                Text(notes).textStyle(Typography.body).foregroundStyle(Palette.text).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
             }
             .frame(height: 220)
-            .padding(12)
-            .cardBackground()
+            .padding(Spacing.md)
+            .surface()
             if case .failed(let message) = updater.phase {
-                Text(message).foregroundStyle(.red).font(.callout)
+                Text(message).textStyle(Typography.body).foregroundStyle(Palette.danger)
             }
-            Text("更新时软件会自动退出、替换并重新打开；项目和设置都不受影响。").font(.callout).foregroundStyle(.secondary)
-            HStack {
+            Text("更新时软件会自动退出、替换并重新打开；项目和设置都不受影响。").textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
+            HStack(spacing: Spacing.sm) {
                 Button("跳过这个版本") { updater.skip() }
                     .disabled(updater.phase == .downloading)
                 Spacer()
@@ -167,18 +168,19 @@ struct UpdateSheet: View {
                     Task { await updater.install(model: model) }
                 } label: {
                     if updater.phase == .downloading {
-                        HStack(spacing: 6) { ProgressView().controlSize(.small); Text("正在下载…") }
+                        HStack(spacing: Spacing.xs) { ProgressView().controlSize(.small); Text("正在下载…") }
                     } else {
                         Text("立即更新")
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.primary)
                 .keyboardShortcut(.defaultAction)
                 .disabled(updater.phase == .downloading)
             }
         }
-        .padding(22)
+        .padding(Spacing.xl)
         .frame(width: 520)
+        .background(Palette.card)
         .interactiveDismissDisabled(updater.phase == .downloading)
     }
 

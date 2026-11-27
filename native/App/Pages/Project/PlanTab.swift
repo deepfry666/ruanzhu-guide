@@ -32,16 +32,16 @@ struct PlanTab: View {
                     SettingsRow(label: "屏数理由") { Text(plan["featureMap"]?["coverageReason"].text.ifEmpty("—") ?? "—").multilineTextAlignment(.trailing).textSelection(.enabled) }
                 }
                 if data.origin == "imported" {
-                    Text("旧项目：编辑某一屏会按新格式重写它的提示词并重新生图。").font(.callout).foregroundStyle(.secondary)
+                    Text("旧项目：编辑某一屏会按新格式重写它的提示词并重新生图。").textStyle(Typography.body).foregroundStyle(Palette.textSecondary)
                 }
                 SettingsGroup(title: "界面（\(plan["screens"].items.count) 屏）") {
                     ForEach(plan["screens"].items, id: \.self) { screen in
                         HStack(alignment: .top, spacing: Spacing.lg) {
-                            Text(screen["id"]?.jsString ?? "").font(.callout.monospaced()).foregroundStyle(.secondary).frame(width: 74, alignment: .leading)
-                            Text(screen["title"]?.jsString ?? "").fontWeight(.semibold).frame(width: 140, alignment: .leading)
+                            Text(screen["id"]?.jsString ?? "").font(Typography.body.font.monospaced()).foregroundStyle(Palette.textSecondary).frame(width: 74, alignment: .leading)
+                            Text(screen["title"]?.jsString ?? "").textStyle(Typography.bodyStrong).frame(width: 140, alignment: .leading)
                             VStack(alignment: .leading, spacing: Spacing.xs) {
                                 FlowLayout { ForEach(screen["mustShow"].items.map(\.jsString), id: \.self) { TagView(text: $0) } }
-                                Text(screen["sampleData"].items.map(\.jsString).joined(separator: "；")).font(.caption).foregroundStyle(.secondary)
+                                Text(screen["sampleData"].items.map(\.jsString).joined(separator: "；")).textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             Button("编辑") { editing = screen }

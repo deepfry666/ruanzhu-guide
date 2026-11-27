@@ -89,10 +89,10 @@ extension ProjectsView {
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 Text("已选 \(count) 个").fontWeight(.semibold).monospacedDigit()
                 if checkMode || count > 1 {
-                    Text("单击行加选或取消，双击打开").textStyle(Typography.caption).foregroundStyle(.secondary)
+                    Text("单击行加选或取消，双击打开").textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
                 }
             }
-            Spacer(minLength: 12)
+            Spacer(minLength: Spacing.md)
             Button("开始处理（\(count)）", systemImage: "play.fill") { start(targets) }
                 .buttonStyle(.primary)
             Button("导出（\(count)）…", systemImage: "square.and.arrow.up") { exportDirs = ExportRequest(dirs: targets.map(\.dir)) }
@@ -110,17 +110,18 @@ extension ProjectsView {
                 selection = Set(rows.map(\.dir))
                 checkMode = true
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.textAction)
             .disabled(selection == Set(rows.map(\.dir)))
             Button("取消选择", systemImage: "xmark.circle.fill") { clearSelection() }
-                .buttonStyle(.borderless)
+                .buttonStyle(.textAction)
                 .labelStyle(.titleAndIcon)
                 .help("取消选择（Esc）")
         }
         .padding(.horizontal, Spacing.lg)
         .padding(.vertical, Spacing.sm)
-        .background(.bar)
-        .overlay(alignment: .top) { Divider() }
+        .background(Palette.card)
+        .overlay(alignment: .top) { Rectangle().fill(Palette.divider).frame(height: Palette.hairline) }
+        .elevation(.raised, in: Rectangle())
     }
 
     /// 表格里的点选。已经在多选（勾选过，或选了不止一个）时，不按修饰键的单击是「加选 / 取消」这一行，

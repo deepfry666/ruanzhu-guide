@@ -24,7 +24,7 @@ extension EditorTab {
                     .padding(Spacing.sm)
                     .background(selectedScreen == screen.id || (selectedScreen.isEmpty && index == 0) ? Palette.primary.tint : Palette.card, in: Radius.shape(Radius.medium))
                     .contentShape(Rectangle())
-                }.buttonStyle(.plain)
+                }.buttonStyle(.pressPlain)
             }
         }
         .focusable()
@@ -42,20 +42,20 @@ extension EditorTab {
     var statusLine: some View {
         HStack(spacing: Spacing.sm) {
             if data.submitted {
-                Text("已提交，只能查看；要修改请先取消已提交").foregroundStyle(.secondary)
+                Text("已提交，只能查看；要修改请先取消已提交").foregroundStyle(Palette.textSecondary)
             } else if data.readOnly {
-                Text("只读项目，不能修改").foregroundStyle(.secondary)
+                Text("只读项目，不能修改").foregroundStyle(Palette.textSecondary)
             } else if running {
-                Label("正在运行，跑完后才能修改", systemImage: "hourglass").foregroundStyle(.secondary)
+                Label("正在运行，跑完后才能修改", systemImage: "hourglass").foregroundStyle(Palette.textSecondary)
             } else {
                 switch saveState {
-                case .saving: ProgressView().controlSize(.small); Text("正在保存…").foregroundStyle(.secondary)
-                case .saved(let date): Label("已自动保存 \(date.formatted(date: .omitted, time: .shortened))", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+                case .saving: ProgressView().controlSize(.small); Text("正在保存…").foregroundStyle(Palette.textSecondary)
+                case .saved(let date): Label("已自动保存 \(date.formatted(date: .omitted, time: .shortened))", systemImage: "checkmark.circle").foregroundStyle(Palette.textSecondary)
                 case .failed(let message): Label("没有保存：\(message)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(Palette.danger)
-                case .idle: Label("文字改了自动保存", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+                case .idle: Label("文字改了自动保存", systemImage: "checkmark.circle").foregroundStyle(Palette.textSecondary)
                 }
                 Spacer()
-                Text("保存后交付包约 3 秒自动更新；需要 AI 时请点「继续」").textStyle(Typography.body).foregroundStyle(.secondary)
+                Text("保存后交付包约 3 秒自动更新；需要 AI 时请点「继续」").textStyle(Typography.body).foregroundStyle(Palette.textSecondary)
             }
         }
     }

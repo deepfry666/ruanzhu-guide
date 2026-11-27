@@ -48,7 +48,7 @@ struct SegmentedTabs<Value: Hashable>: View {
                         .foregroundStyle(Palette.textSecondary)
                 }
             }
-            .animation(Motion.linear(0.2), value: selected)
+            .animation(reduceMotion ? nil : Motion.linear(0.2), value: selected)
             .lineLimit(1)
             .padding(.horizontal, Spacing.md)
             .frame(maxHeight: .infinity)

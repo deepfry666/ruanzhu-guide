@@ -16,28 +16,48 @@ struct LlmView: View {
     var body: some View {
         let vendors = model.settings.llm.vendors
         PageScroll {
-            SettingsGroup(title: "厂商") {
+            SettingsGroup(
+                title: "厂商",
+                trailing: AnyView(
+                    Button { editing = .draft() } label: { Label("添加厂商", systemImage: "plus") }
+                        .buttonStyle(.primary)
+                        .help("添加厂商")
+                )
+            ) {
                 if vendors.isEmpty {
-                    Text("还没有大模型厂商，点「添加厂商」").foregroundStyle(.secondary).padding(14)
+                    Text("还没有大模型厂商，点「添加厂商」")
+                        .textStyle(Typography.body)
+                        .foregroundStyle(Palette.textSecondary)
+                        .padding(Spacing.lg)
                 } else {
                     ForEach(vendors) { vendor in
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text(vendor.name).fontWeight(.semibold)
+                        HStack(spacing: Spacing.md) {
+                            VStack(alignment: .leading, spacing: Spacing.xs) {
+                                HStack(spacing: Spacing.sm) {
+                                    Text(vendor.name).textStyle(Typography.bodyStrong).foregroundStyle(Palette.text)
                                     TagView(text: LLM_PRESETS[vendor.preset]?.label ?? vendor.preset)
                                     if !(model.vendorKeys[vendor.id] ?? false) { TagView(text: "没有密钥", tone: .red) }
                                 }
-                                Text(vendor.baseUrl).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                                Text(vendor.baseUrl)
+                                    .font(Typography.caption.font.monospaced())
+                                    .foregroundStyle(Palette.textSecondary)
+                                    .textSelection(.enabled)
                             }
                             Spacer()
-                            Text(vendor.models.isEmpty ? "—" : "已获取 \(vendor.models.count) 个模型").foregroundStyle(.secondary)
+                            Text(vendor.models.isEmpty ? "—" : "已获取 \(vendor.models.count) 个模型")
+                                .textStyle(Typography.body.number)
+                                .foregroundStyle(Palette.textSecondary)
                             Button("获取模型", systemImage: "arrow.triangle.2.circlepath") { fetchModels(vendor) }
-                            Button { editing = vendor } label: { Image(systemName: "pencil") }.buttonStyle(.borderless).help("编辑")
-                            Button(role: .destructive) { deleting = vendor } label: { Image(systemName: "trash") }.buttonStyle(.borderless).help("删除")
+                                .buttonStyle(.secondary)
+                            Button { editing = vendor } label: { Image(systemName: "pencil") }
+                                .buttonStyle(.iconAction)
+                                .help("编辑")
+                            Button(role: .destructive) { deleting = vendor } label: { Image(systemName: "trash") }
+                                .buttonStyle(.iconAction)
+                                .help("删除")
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, Spacing.lg)
+                        .padding(.vertical, Spacing.sm)
                     }
                 }
             }
@@ -48,18 +68,13 @@ struct LlmView: View {
                 }
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { editing = .draft() } label: { Label("添加厂商", systemImage: "plus") }
-                    .buttonStyle(.primary)
-                    .help("添加厂商")
-            }
-        }
         .sheet(item: $editing) { vendor in
             VendorEditor(vendor: vendor, hasKey: model.vendorKeys[vendor.id] ?? false) {
                 editing = nil
                 Task { await model.reloadSettings() }
             }
+            .environment(model).designSystem()
+            .overlay(alignment: .bottom) { ToastOverlay(toasts: model.toasts) }
         }
         .confirmationDialog(deleting.map { "删除「\($0.name)」？" } ?? "", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             Button("删除", role: .destructive) {
@@ -93,6 +108,8 @@ struct AssignmentRow: View {
     @Environment(AppModel.self) private var model
     @State private var vendorId = ""
     @State private var modelName = ""
+    @State private var modelError = false
+    @State private var shakeTrigger = 0
     @State private var testing = false
     /// 测试结果：没问题时只弹提示；有问题时打开窗口，写明线路回了什么
     @State private var report: (title: String, summary: String, details: String)?
@@ -104,12 +121,18 @@ struct AssignmentRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(info.label).fontWeight(.semibold)
-                    if info.needsVision { Text("需要看图模型").font(.caption).foregroundStyle(.secondary) }
-                    if let fallback = info.fallback { Text("不选时用「\(LLM_STEPS[fallback]?.label ?? fallback)」的模型").font(.caption).foregroundStyle(.secondary) }
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            HStack(spacing: Spacing.md) {
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Text(info.label).textStyle(Typography.bodyStrong).foregroundStyle(Palette.text)
+                    if info.needsVision {
+                        Text("需要看图模型").textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
+                    }
+                    if let fallback = info.fallback {
+                        Text("不选时用「\(LLM_STEPS[fallback]?.label ?? fallback)」的模型")
+                            .textStyle(Typography.caption)
+                            .foregroundStyle(Palette.textSecondary)
+                    }
                 }
                 .frame(width: 170, alignment: .leading)
                 Picker("", selection: $vendorId) {
@@ -118,17 +141,27 @@ struct AssignmentRow: View {
                 }
                 .labelsHidden()
                 .frame(width: 200)
-                HStack(spacing: 4) {
-                    TextField("模型名", text: $modelName).textFieldStyle(.roundedBorder)
-                    if !suggestions.isEmpty {
-                        Menu {
-                            ForEach(suggestions, id: \.self) { item in Button(item) { modelName = item } }
-                        } label: {
-                            Image(systemName: "chevron.down")
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    HStack(spacing: Spacing.xs) {
+                        TextField("模型名", text: $modelName)
+                            .textFieldStyle(.roundedBorder)
+                            .overlay(Radius.shape(Radius.small).strokeBorder(modelError ? Palette.danger : Palette.divider, lineWidth: Palette.hairline))
+                            .overlay(Radius.shape(Radius.small).strokeBorder(Palette.errorRing, lineWidth: modelError ? Palette.ringWidth : 0))
+                            .shake(trigger: shakeTrigger)
+                            .onChange(of: modelName) { _, _ in modelError = false }
+                        if !suggestions.isEmpty {
+                            Menu {
+                                ForEach(suggestions, id: \.self) { item in Button(item) { modelName = item } }
+                            } label: {
+                                Image(systemName: "chevron.down")
+                            }
+                            .menuStyle(.borderlessButton)
+                            .menuIndicator(.hidden)
+                            .fixedSize()
                         }
-                        .menuStyle(.borderlessButton)
-                        .menuIndicator(.hidden)
-                        .fixedSize()
+                    }
+                    if modelError {
+                        Text("请填写模型名").textStyle(Typography.caption).foregroundStyle(Palette.danger)
                     }
                 }
                 .frame(width: 260)
@@ -139,47 +172,59 @@ struct AssignmentRow: View {
                 } label: {
                     if testing { ProgressView().controlSize(.small) } else { Text("测试") }
                 }
+                .buttonStyle(.secondary)
                 .disabled(vendorId.isEmpty || modelName.isEmpty || testing)
             }
             if info.needsVision, vendor?.preset == "deepseek" {
                 Banner(.warning, "DeepSeek 目前没有看图模型，这一步建议改用 OpenAI 或智谱的看图模型")
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, Spacing.lg)
+        .padding(.vertical, Spacing.sm)
         .onAppear {
             let current = model.settings.llm.ownAssignment(step)
             vendorId = current?.vendorId ?? ""
             modelName = current?.model ?? ""
         }
         .sheet(isPresented: Binding(get: { report != nil }, set: { if !$0 { report = nil } })) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(report?.title ?? "").font(.headline)
-                Text(report?.summary ?? "").textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: Spacing.md) {
+                Text(report?.title ?? "").textStyle(Typography.title).foregroundStyle(Palette.text)
+                Text(report?.summary ?? "").textStyle(Typography.body).foregroundStyle(Palette.text).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 if let details = report?.details, !details.isEmpty {
-                    Text("线路回的内容（结束原因、正文、推理内容、原始返回）").font(.subheadline.weight(.semibold))
+                    Text("线路回的内容（结束原因、正文、推理内容、原始返回）").textStyle(Typography.bodyStrong).foregroundStyle(Palette.text)
                     ScrollView {
-                        Text(details).font(.system(.callout, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                        Text(details)
+                            .font(Typography.body.font.monospaced())
+                            .foregroundStyle(Palette.text)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .padding(Spacing.md)
+                    .surface(Radius.medium, fill: Palette.windowBackground)
                     .frame(minHeight: 260)
                 }
-                HStack {
+                HStack(spacing: Spacing.sm) {
                     Button("复制全部") {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString([report?.title, report?.summary, report?.details].compactMap { $0 }.joined(separator: "\n\n"), forType: .string)
                         model.toast(.success, "已复制")
                     }
                     Spacer()
-                    Button("好") { report = nil }.keyboardShortcut(.defaultAction)
+                    Button("好") { report = nil }.buttonStyle(.primary).keyboardShortcut(.defaultAction)
                 }
             }
-            .padding(20)
+            .padding(Spacing.xl)
             .frame(width: 680)
+            .background(Palette.card)
+            .designSystem()
+            .overlay(alignment: .bottom) { ToastOverlay(toasts: model.toasts) }
         }
     }
 
     func save() {
         if !vendorId.isEmpty, modelName.jsTrimmed.isEmpty {
+            modelError = true
+            shakeTrigger += 1
             model.toast(.warning, "请填写模型名（可以先点厂商的「获取模型」再从下拉里选）")
             return
         }
@@ -221,6 +266,8 @@ struct VendorEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft: LlmVendor
     @State private var apiKey = ""
+    @State private var nameError = false
+    @State private var shakeTrigger = 0
     @State private var busy = false
 
     init(vendor: LlmVendor, hasKey: Bool, onSaved: @escaping () -> Void) {
@@ -233,10 +280,10 @@ struct VendorEditor: View {
     var isNew: Bool { vendor.id.isEmpty }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(isNew ? "添加大模型厂商" : "编辑：\(vendor.name)").font(.title2.weight(.semibold))
-            VStack(alignment: .leading, spacing: 5) {
-                Text("厂商").font(.callout.weight(.medium))
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            Text(isNew ? "添加大模型厂商" : "编辑：\(vendor.name)").textStyle(Typography.title).foregroundStyle(Palette.text)
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("厂商").textStyle(Typography.captionStrong).foregroundStyle(Palette.textSecondary)
                 Picker("", selection: Binding(get: { draft.preset }, set: { key in
                     let preset = LLM_PRESETS[key]!
                     draft.preset = key
@@ -251,15 +298,26 @@ struct VendorEditor: View {
                 .labelsHidden()
                 .fixedSize()
             }
-            labeled("名称") { TextField("", text: $draft.name).textFieldStyle(.roundedBorder) }
+            labeled("名称", error: nameError ? "请填写名称" : nil) {
+                TextField("", text: $draft.name)
+                    .textFieldStyle(.roundedBorder)
+                    .overlay(Radius.shape(Radius.small).strokeBorder(nameError ? Palette.danger : Palette.divider, lineWidth: Palette.hairline))
+                    .overlay(Radius.shape(Radius.small).strokeBorder(Palette.errorRing, lineWidth: nameError ? Palette.ringWidth : 0))
+                    .shake(trigger: shakeTrigger)
+                    .onChange(of: draft.name) { _, _ in nameError = false }
+            }
             labeled("接口地址") { TextField("https://.../v1", text: $draft.baseUrl).textFieldStyle(.roundedBorder) }
             labeled("密钥", hint: !isNew && hasKey ? "已保存，留空表示不修改" : "加密保存在本机") { SecureField("", text: $apiKey).textFieldStyle(.roundedBorder) }
             Toggle("要求返回 JSON 格式（不支持的模型会自动降级）", isOn: $draft.jsonMode).toggleStyle(.switch)
-            HStack {
+            HStack(spacing: Spacing.sm) {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存") {
-                    if draft.name.jsTrimmed.isEmpty { return model.toast(.warning, "请填写名称") }
+                    if draft.name.jsTrimmed.isEmpty {
+                        nameError = true
+                        shakeTrigger += 1
+                        return model.toast(.warning, "请填写名称")
+                    }
                     busy = true
                     Task {
                         defer { busy = false }
@@ -274,15 +332,20 @@ struct VendorEditor: View {
                 .disabled(busy)
             }
         }
-        .padding(22)
+        .padding(Spacing.xl)
         .frame(width: 560)
+        .background(Palette.card)
     }
 
-    func labeled<Content: View>(_ label: String, hint: String? = nil, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(label).font(.callout.weight(.medium))
+    func labeled<Content: View>(_ label: String, hint: String? = nil, error: String? = nil, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            Text(label).textStyle(Typography.captionStrong).foregroundStyle(Palette.textSecondary)
             content()
-            if let hint { Text(hint).font(.caption).foregroundStyle(.secondary) }
+            if let error {
+                Text(error).textStyle(Typography.caption).foregroundStyle(Palette.danger)
+            } else if let hint {
+                Text(hint).textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
+            }
         }
     }
 }

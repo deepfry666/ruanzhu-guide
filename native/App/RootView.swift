@@ -121,7 +121,7 @@ struct SidebarView: View {
         .safeAreaInset(edge: .bottom) {
             Text("v\(model.appVersion)")
                 .textStyle(Typography.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Palette.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, Spacing.lg)
                 .padding(.bottom, Spacing.md)
@@ -141,11 +141,11 @@ struct PendingJobsNotice: View {
     var body: some View {
         let jobs = model.unknownJobs
         if !jobs.isEmpty {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.title2)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("有 \(jobs.count) 个生图任务在提交途中软件退出了，不确定中转站是否已经扣费").fontWeight(.semibold)
-                    Text("这些屏会在下次运行时重新生成。如果你在中转站后台确认已出图，可以忽略。").font(.callout).foregroundStyle(.secondary)
+            HStack(alignment: .top, spacing: Spacing.md) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.warning).textStyle(Typography.title)
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Text("有 \(jobs.count) 个生图任务在提交途中软件退出了，不确定中转站是否已经扣费").textStyle(Typography.bodyStrong).foregroundStyle(Palette.text)
+                    Text("这些屏会在下次运行时重新生成。如果你在中转站后台确认已出图，可以忽略。").textStyle(Typography.body).foregroundStyle(Palette.textSecondary)
                 }
                 Button("知道了") {
                     Task {
@@ -155,10 +155,11 @@ struct PendingJobsNotice: View {
                 }
                 .buttonStyle(.secondary)
             }
-            .padding(16)
-            .frame(maxWidth: 640)
-            .glassEffect(.regular, in: .rect(cornerRadius: 20))
-            .padding(20)
+            .padding(Spacing.lg)
+            .frame(maxWidth: Metrics.dialogNewWidth)
+            .surface(Radius.large)
+            .elevation(.raised, in: Radius.shape(Radius.large))
+            .padding(Spacing.xl)
         }
     }
 }

@@ -16,13 +16,13 @@ struct CodeTemplateSettings: View {
     var enabled: [JSON] { entries.filter { $0["enabled"].isTruthy } }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
             SettingsGroup(
                 title: "代码模板（\(entries.count) 个）",
                 footer: "52 行版固定为 60 页，每页 52 行非空原始代码，折行不重复计数。历史版保留原来的 50 个版面行规则；每份模板下方会标出版式。出包时只换页眉和页码。用过的模板不能删，可以停用。支持拖入 Word 文件。",
                 trailing: AnyView(
                     Button(adding ? "正在检查…" : "添加模板…", systemImage: "plus") { choose() }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.textAction)
                         .disabled(adding)
                 )
             ) {
@@ -32,7 +32,7 @@ struct CodeTemplateSettings: View {
                 ForEach(entries, id: \.["id"]) { entry in row(entry) }
             }
             .overlay {
-                if dropTargeted { RoundedRectangle(cornerRadius: 12).strokeBorder(Color.accentColor, lineWidth: 2) }
+                if dropTargeted { Radius.shape(Radius.large).strokeBorder(Palette.primary, lineWidth: 2) }
             }
             .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
                 Task { await add(await droppedFiles(providers)) }
@@ -40,12 +40,13 @@ struct CodeTemplateSettings: View {
             }
             SettingsGroup(title: "新项目怎么分配", footer: "新建项目时按这里分配模板；批量新建时在新建页还能改成全部用某一个。已有项目要换，在交付页或项目列表里换。") {
                 SettingsRow(label: "分配方式") {
-                    Picker("", selection: Binding(get: { library?["assign"]?.string == "fixed" ? "fixed" : "balance" }, set: { setAssign($0, fixed: library?["fixedId"]?.string ?? enabled.first?["id"]?.string ?? "") })) {
-                        Text("轮流平均分").tag("balance")
-                        Text("全部用同一个").tag("fixed")
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    SegmentedTabs(
+                        selection: Binding(get: { library?["assign"]?.string == "fixed" ? "fixed" : "balance" }, set: { setAssign($0, fixed: library?["fixedId"]?.string ?? enabled.first?["id"]?.string ?? "") }),
+                        items: [
+                            .init(value: "balance", title: "轮流平均分"),
+                            .init(value: "fixed", title: "全部用同一个"),
+                        ]
+                    )
                     .fixedSize()
                 }
                 if library?["assign"]?.string == "fixed" {
@@ -63,15 +64,21 @@ struct CodeTemplateSettings: View {
         }
         .task { await reload() }
         .sheet(isPresented: Binding(get: { results != nil }, set: { if !$0 { results = nil } })) {
-            AddResultsSheet(results: results ?? []) { results = nil }
+            AddResultsSheet(results: results ?? []) { results = nil }.designSystem()
         }
         .sheet(isPresented: Binding(get: { usedBy != nil }, set: { if !$0 { usedBy = nil } })) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("用\(usedBy?.label ?? "")的项目（\(usedBy?.names.count ?? 0) 个）").font(.headline)
-                List(usedBy?.names ?? [], id: \.self) { Text($0) }.frame(minWidth: 360, minHeight: 300)
-                HStack { Spacer(); Button("好") { usedBy = nil }.keyboardShortcut(.defaultAction) }
+            VStack(alignment: .leading, spacing: Spacing.md) {
+                Text("用\(usedBy?.label ?? "")的项目（\(usedBy?.names.count ?? 0) 个）")
+                    .textStyle(Typography.title).foregroundStyle(Palette.text)
+                List(usedBy?.names ?? [], id: \.self) { Text($0).textStyle(Typography.body) }
+                    .frame(minWidth: 360, minHeight: 300)
+                    .clipShape(Radius.shape(Radius.medium))
+                    .overlay(Radius.shape(Radius.medium).strokeBorder(Palette.divider, lineWidth: Palette.hairline))
+                HStack { Spacer(); Button("好") { usedBy = nil }.buttonStyle(.primary).keyboardShortcut(.defaultAction) }
             }
-            .padding(20)
+            .padding(Spacing.xl)
+            .background(Palette.card)
+            .designSystem()
         }
         .confirmationDialog("删除\(removing?["label"].text ?? "")？", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("删除", role: .destructive) { if let id = removing?["id"]?.string { remove(id) } }
@@ -85,24 +92,25 @@ struct CodeTemplateSettings: View {
         let usage = entry["usage"]?.int ?? 0
         let sourceRows = entry["sourceRows"]?.int ?? 3000
         let detail = entry["cropped"].isTruthy ? "原来印出来 \(sourceRows) 行，已裁成 60 页" : "正好 60 页"
-        return HStack(spacing: 12) {
+        return HStack(spacing: Spacing.md) {
             Toggle("", isOn: Binding(get: { entry["enabled"].isTruthy }, set: { setEnabled(id, $0) }))
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .help(entry["enabled"].isTruthy ? "已启用：新项目会分到它" : "已停用：新项目不会分到它，已用它的项目不受影响")
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(entry["label"].text).font(.body.weight(.medium))
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                HStack(spacing: Spacing.sm) {
+                    Text(entry["label"].text).textStyle(Typography.bodyStrong).foregroundStyle(Palette.text)
                     if !entry["enabled"].isTruthy { TagView(text: "已停用") }
                 }
-                Text("\(entry["paginationDescription"]?.string ?? detail) · \(entry["sourceName"].text)").font(.caption).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+                Text("\(entry["paginationDescription"]?.string ?? detail) · \(entry["sourceName"].text)")
+                    .textStyle(Typography.caption).foregroundStyle(Palette.textSecondary).lineLimit(2).truncationMode(.middle)
             }
-            Spacer(minLength: 12)
+            Spacer(minLength: Spacing.md)
             Button(usage == 0 ? "没用过" : "用在 \(usage) 个项目") { showUsage(entry) }
-                .buttonStyle(.borderless)
+                .buttonStyle(.textAction)
                 .disabled(usage == 0)
             Button("打开") { model.open(entry["file"].text) }
-                .buttonStyle(.borderless)
+                .buttonStyle(.textAction)
                 .help("用 WPS（或你默认的 Word 软件）打开整理好的这份，看到的就是交付时的样子")
             Menu {
                 Button("在访达中显示") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: entry["file"].text)]) }
@@ -114,8 +122,8 @@ struct CodeTemplateSettings: View {
                 .fixedSize()
                 .help(usage > 0 ? "用过的模板不能删，可以停用" : "更多")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, Spacing.lg)
+        .padding(.vertical, Spacing.sm)
     }
 
     func reload() async {
@@ -177,18 +185,19 @@ private struct AddResultsSheet: View {
 
     var body: some View {
         let ok = results.filter { $0["ok"].isTruthy }.count
-        VStack(alignment: .leading, spacing: 12) {
-            Text(ok == results.count ? "加好了 \(ok) 个模板" : "加好了 \(ok) 个，\(results.count - ok) 个没加").font(.headline)
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            Text(ok == results.count ? "加好了 \(ok) 个模板" : "加好了 \(ok) 个，\(results.count - ok) 个没加")
+                .textStyle(Typography.title).foregroundStyle(Palette.text)
             ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: Spacing.md) {
                     ForEach(results.indices, id: \.self) { index in
                         let item = results[index]
-                        HStack(alignment: .top, spacing: 8) {
+                        HStack(alignment: .top, spacing: Spacing.sm) {
                             Image(systemName: item["ok"].isTruthy ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .foregroundStyle(item["ok"].isTruthy ? .green : .red)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item["file"].text).lineLimit(1).truncationMode(.middle)
-                                Text(describe(item)).font(.callout).foregroundStyle(.secondary)
+                                .foregroundStyle(item["ok"].isTruthy ? Palette.success : Palette.danger)
+                            VStack(alignment: .leading, spacing: Spacing.xs) {
+                                Text(item["file"].text).textStyle(Typography.bodyStrong).foregroundStyle(Palette.text).lineLimit(1).truncationMode(.middle)
+                                Text(describe(item)).textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
                             }
                         }
                     }
@@ -196,9 +205,10 @@ private struct AddResultsSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(minWidth: 460, minHeight: 160, maxHeight: 360)
-            HStack { Spacer(); Button("好", action: close).keyboardShortcut(.defaultAction) }
+            HStack { Spacer(); Button("好", action: close).buttonStyle(.primary).keyboardShortcut(.defaultAction) }
         }
-        .padding(20)
+        .padding(Spacing.xl)
+        .background(Palette.card)
     }
 
     func describe(_ item: JSON) -> String {

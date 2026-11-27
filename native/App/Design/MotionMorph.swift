@@ -76,6 +76,7 @@ struct MorphButton: View {
         case .secondary: return Palette.text
         case .danger: return Palette.danger
         case .text: return Palette.primary
+        case .icon: return Palette.textSecondary
         }
     }
 
@@ -87,6 +88,7 @@ struct MorphButton: View {
         case .secondary: return hovered ? Palette.secondaryHover : Palette.fill
         case .danger: return Palette.danger.tint
         case .text: return hovered ? Palette.primary.tint : Palette.primary.opacity(0)
+        case .icon: return hovered ? Palette.fill : Palette.primary.opacity(0)
         }
     }
 

@@ -26,7 +26,7 @@ struct Card<Content: View>: View {
     }
 }
 
-/// 数值统计卡片：辅助字号的名称 + 统计大数（数字变化时滚动）。
+/// 指标卡片：辅助字号的名称 + 等宽数字（用于调用记录概览；统计页的滚动大数见 `StatsView`）。
 struct StatTile: View {
     let title: String
     let value: String
@@ -35,9 +35,9 @@ struct StatTile: View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             Text(title).textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
             Text(value)
-                .textStyle(Typography.statNumber)
+                .textStyle(Typography.title.number)
                 .foregroundStyle(Palette.text)
-                .numberRoll(value)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Spacing.lg)
@@ -169,7 +169,7 @@ struct InfoButton: View {
         } label: {
             Image(systemName: "info.circle").foregroundStyle(Palette.textSecondary)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.iconAction)
         .help(text)
         .popover(isPresented: $shown, arrowEdge: .bottom) {
             Text(text)

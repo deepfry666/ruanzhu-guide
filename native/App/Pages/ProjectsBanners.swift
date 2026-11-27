@@ -7,7 +7,7 @@ struct ProgressCell: View {
 
     var body: some View {
         if row.historyReadOnly {
-            Text("只有交付包，没有源文件").foregroundStyle(.secondary)
+            Text("只有交付包，没有源文件").foregroundStyle(Palette.textSecondary)
         } else if row.status == "running" {
             let step = row.progress?["step"]?.string ?? row.stepSummary.current
             let index = step.flatMap { STEP_ORDER.firstIndex(of: $0) }.map { $0 + 1 } ?? 1
@@ -19,7 +19,7 @@ struct ProgressCell: View {
         } else {
             let summary = row.stepSummary
             Text("\(summary.done)/\(STEP_ORDER.count)\(summary.current.map { " · \(UI_STEP_LABELS[$0] ?? $0)" } ?? " · 完成")")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Palette.textSecondary)
                 .help(row.lastError.map { splitDiagnostics($0).text } ?? row.queue?["error"]?.string ?? (summary.current.map { "下一步：\(UI_STEP_LABELS[$0] ?? $0)" } ?? "全部完成"))
         }
     }
@@ -120,12 +120,12 @@ struct SetupHint: View {
                     ForEach(missing, id: \.tab) { item in
                         HStack(spacing: Spacing.xs) {
                             Text(item.text)
-                            Button("去配置") { model.go(.models, tab: item.tab) }.buttonStyle(.link)
+                            Button("去配置") { model.go(.models, tab: item.tab) }.buttonStyle(.textAction)
                         }
                         .textStyle(Typography.body)
                     }
                     if model.settings.llm.assignment("gate") == nil {
-                        Text("检查截图要用看图模型；没有配置时，需要人工逐张确认截图里没有软件名。").textStyle(Typography.caption).foregroundStyle(.secondary)
+                        Text("检查截图要用看图模型；没有配置时，需要人工逐张确认截图里没有软件名。").textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
                     }
                 }
                 Spacer()
@@ -153,7 +153,7 @@ struct CodeBatchBanner: View {
                     Text("正在更新代码材料 \(min(processed + 1, batch.total)) / \(batch.total)\(batch.current.map { "：" + name($0) } ?? "")").fontWeight(.medium)
                 }
                 Spacer()
-                if !batch.finished { Text("一个一个处理，每个几秒钟").textStyle(Typography.caption).foregroundStyle(.secondary) }
+                if !batch.finished { Text("一个一个处理，每个几秒钟").textStyle(Typography.caption).foregroundStyle(Palette.textSecondary) }
             }
             ProgressView(value: Double(processed), total: Double(max(batch.total, 1)))
         }

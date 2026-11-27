@@ -55,10 +55,14 @@ extension ProjectsView {
                 Button(sortAscending ? "升序" : "降序", systemImage: sortAscending ? "arrow.up" : "arrow.down") { sortAscending.toggle() }
                     .labelStyle(.titleAndIcon)
             }
-            Picker("显示方式", selection: $presentation) {
-                Text("列表").tag("list")
-                Text("网格").tag("grid")
-            }.pickerStyle(.segmented).fixedSize()
+            SegmentedTabs(
+                selection: $presentation,
+                items: [
+                    .init(value: "list", title: "列表"),
+                    .init(value: "grid", title: "网格"),
+                ]
+            )
+            .fixedSize()
             Spacer(minLength: Spacing.md)
             HStack(spacing: Spacing.sm) {
                 Button { model.showNewProject() } label: { Label("新建", systemImage: "plus") }

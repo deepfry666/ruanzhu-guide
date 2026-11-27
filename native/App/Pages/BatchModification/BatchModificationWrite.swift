@@ -20,7 +20,7 @@ struct BatchModificationWrite: View {
                                 }
                             }
                             Spacer()
-                            Button("移除") { state.dirs.removeAll { $0 == dir }; state.target = "" }.buttonStyle(.borderless).disabled(!state.editingNotes.isEmpty)
+                            Button("移除") { state.dirs.removeAll { $0 == dir }; state.target = "" }.buttonStyle(.textAction).disabled(!state.editingNotes.isEmpty)
                         }
                     }
                     if state.dirs.isEmpty { Text("从列表多选项目，或粘贴软件名名单添加。 ").foregroundStyle(Palette.textSecondary) }
@@ -72,11 +72,16 @@ struct BatchModificationWrite: View {
             }
             SettingsGroup(title: "重做方式（调用收费模型）") {
                 VStack(alignment: .leading, spacing: Spacing.sm) {
-                    Picker("重做方式", selection: $state.force) {
-                        Text("按意见修改").tag("none")
-                        Text("只重写文字").tag("rewrite")
-                        Text("从头重做").tag("regenerate")
-                    }.pickerStyle(.segmented).labelsHidden().disabled(state.hasDraft)
+                    SegmentedTabs(
+                        selection: $state.force,
+                        items: [
+                            .init(value: "none", title: "按意见修改"),
+                            .init(value: "rewrite", title: "只重写文字"),
+                            .init(value: "regenerate", title: "从头重做"),
+                        ]
+                    )
+                    .fixedSize()
+                    .disabled(state.hasDraft)
                     Text(state.force == "none" ? "先整理意见，再逐项预览。" : "本次不执行清单里的意见，已保存意见仍保留。重写或重做会产生模型费用。")
                         .textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
                 }.padding(Spacing.lg)

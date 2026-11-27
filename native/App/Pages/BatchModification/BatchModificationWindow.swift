@@ -53,8 +53,12 @@ struct BatchModificationWindow: View {
                 case .preview:
                     Button("下一步：确认执行") { state.step = .confirm }.buttonStyle(.primary).disabled(state.busy || !state.hasWork)
                 case .confirm:
-                    Button("确认执行") { Task { if await state.execute() { finished(); dismiss() } } }
-                        .buttonStyle(.primary).disabled(state.busy || !state.hasWork)
+                    MorphButton(title: "确认执行", doneTitle: "已提交") {
+                        let ok = await state.execute()
+                        if ok { finished(); dismiss() }
+                        return ok
+                    }
+                    .disabled(state.busy || !state.hasWork)
                 }
             }
         }

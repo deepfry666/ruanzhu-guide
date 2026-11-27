@@ -17,14 +17,14 @@ extension EditorTab {
                         .onKeyPress(.space) { preview = screen; return .handled }
                         .help("点击或按空格查看大图")
                 } else {
-                    Rectangle().fill(.quaternary)
-                    Text(running ? "生成中…" : "未生成").foregroundStyle(.secondary)
+                    Rectangle().fill(Palette.fill)
+                    Text(running ? "生成中…" : "未生成").foregroundStyle(Palette.textSecondary)
                 }
             }
             .frame(minHeight: Metrics.gridShotHeight)
             .frame(maxWidth: Metrics.editorImageWidth)
-            .background(Palette.fill.color)
-            .clipShape(RoundedRectangle(cornerRadius: Radius.large))
+            .background(Palette.fill)
+            .clipShape(Radius.shape(Radius.large))
             FlowLayout(spacing: Spacing.xs) {
                 TagView(text: tag.0, tone: tag.1)
                 if screen.state["promptEdited"].isTruthy && data.origin != "imported" { TagView(text: "提示词已改", tone: .purple) }
@@ -75,7 +75,7 @@ extension EditorTab {
                     .menuIndicator(.hidden)
                     .fixedSize()
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.iconAction)
                 .disabled(!editable)
             }
         }

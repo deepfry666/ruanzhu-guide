@@ -4,33 +4,44 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
 
+    private var activeTab: String {
+        ["general", "code", "pdf", "txt", "import", "cleanup"].contains(model.settingsTab) ? model.settingsTab : "general"
+    }
+
     var body: some View {
-        @Bindable var model = model
-        Group {
-            switch model.settingsTab {
-            case "code": PageScroll(maxWidth: 1000) { CodeTemplateSettings() }
-            case "pdf": PageScroll(maxWidth: 1000) { PdfSettings() }
-            case "txt": PageScroll(maxWidth: 1000) { TxtSettings() }
-            case "import": ImportPanel()
-            case "cleanup": PageScroll(maxWidth: 1000) { CleanupSettings() }
-            default: PageScroll(maxWidth: 1000) { GeneralSettings() }
+        VStack(spacing: 0) {
+            HStack(spacing: Spacing.lg) {
+                Text("设置").textStyle(Typography.title).foregroundStyle(Palette.text)
+                Spacer()
+                SegmentedTabs(
+                    selection: Binding(get: { activeTab }, set: { model.settingsTab = $0 }),
+                    items: [
+                        .init(value: "general", title: "通用"),
+                        .init(value: "code", title: "代码模板"),
+                        .init(value: "pdf", title: "PDF 与字体"),
+                        .init(value: "txt", title: "TXT"),
+                        .init(value: "import", title: "导入项目"),
+                        .init(value: "cleanup", title: "清理空间"),
+                    ]
+                )
+                Spacer()
             }
-        }
-        .navigationTitle("设置")
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker("", selection: $model.settingsTab) {
-                    Text("通用").tag("general")
-                    Text("代码模板").tag("code")
-                    Text("PDF 与字体").tag("pdf")
-                    Text("TXT").tag("txt")
-                    Text("导入项目").tag("import")
-                    Text("清理空间").tag("cleanup")
+            .padding(.horizontal, Spacing.xl)
+            .frame(height: Metrics.toolbarHeight)
+            Rectangle().fill(Palette.divider).frame(height: Palette.hairline)
+            Group {
+                switch activeTab {
+                case "code": PageScroll(maxWidth: 1000) { CodeTemplateSettings() }
+                case "pdf": PageScroll(maxWidth: 1000) { PdfSettings() }
+                case "txt": PageScroll(maxWidth: 1000) { TxtSettings() }
+                case "import": ImportPanel()
+                case "cleanup": PageScroll(maxWidth: 1000) { CleanupSettings() }
+                default: PageScroll(maxWidth: 1000) { GeneralSettings() }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
             }
         }
+        .background(Palette.windowBackground)
+        .navigationTitle("设置")
     }
 }
 
@@ -51,7 +62,7 @@ struct GeneralSettings: View {
 
     var body: some View {
         let pipeline = model.settings.pipeline
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
             SettingsGroup(title: "位置") {
                 SettingsRow(label: "项目存放位置", info: "新建的项目都放在这里，和以前 skill 用的是同一个文件夹。") {
                     PathText(path: model.settings.workspaceDir).frame(maxWidth: 360, alignment: .trailing)
@@ -61,7 +72,7 @@ struct GeneralSettings: View {
                 }
                 SettingsRow(label: "软件数据", info: "设置、加密的密钥、调用记录和项目状态。") {
                     PathText(path: model.dataDir).frame(maxWidth: 360, alignment: .trailing)
-                    Button("在访达中显示") { model.reveal(model.dataDir) }.buttonStyle(.borderless)
+                    Button("在访达中显示") { model.reveal(model.dataDir) }.buttonStyle(.textAction)
                 }
             }
             SettingsGroup(title: "生成") {
@@ -92,12 +103,12 @@ struct GeneralSettings: View {
                     case .some(.some): StatusDot(kind: .ok, text: "已就绪")
                     case .some(.none): StatusDot(kind: .error, text: "未找到")
                     }
-                    Button("重新检测") { detect() }.buttonStyle(.borderless)
+                    Button("重新检测") { detect() }.buttonStyle(.textAction)
                 }
             }
             SettingsGroup(title: "更新") {
                 SettingsRow(label: "当前版本", hint: "新版本发布在 GitHub：\(Updater.repo)") {
-                    Text(updater.currentVersion).monospacedDigit()
+                    Text(updater.currentVersion).textStyle(Typography.body.number)
                     Button {
                         Task { await updater.check(manual: true) }
                     } label: {
@@ -124,8 +135,8 @@ struct PdfSettings: View {
     @State private var fonts: JSON?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SettingsGroup(title: "字体", footer: "没装原版字体时固定换成下面的系统字体，转完自动核对 PDF 里实际用的字体。", trailing: AnyView(Button("重新检测") { reload() }.buttonStyle(.borderless))) {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            SettingsGroup(title: "字体", footer: "没装原版字体时固定换成下面的系统字体，转完自动核对 PDF 里实际用的字体。", trailing: AnyView(Button("重新检测") { reload() }.buttonStyle(.textAction))) {
                 ForEach(DOC_FONT_ORDER, id: \.self) { kind in
                     let doc = fonts?["docs"]?[kind] ?? .emptyObject
                     SettingsRow(label: doc["label"].text.ifEmpty(DOC_FONTS[kind]!.label), hint: "模板字体：\(DOC_FONTS[kind]!.original)") {
@@ -198,8 +209,8 @@ struct TxtSettings: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 20) {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            AdaptiveColumns(breakpoint: 720, spacing: Spacing.lg) {
                 SettingsGroup(title: "开发环境") { ForEach(["devHardware", "devOs", "devTools"], id: \.self) { field($0) } }
                 SettingsGroup(title: "运行环境") { ForEach(["runHardware", "runPlatform", "runSupport"], id: \.self) { field($0) } }
             }
@@ -207,7 +218,12 @@ struct TxtSettings: View {
                 ForEach(["language", "sourceLines"], id: \.self) { field($0) }
             }
             SettingsGroup(title: "TXT 开头的样子") {
-                Text(guidePreview).font(.system(.callout, design: .monospaced)).textSelection(.enabled).padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                Text(guidePreview)
+                    .font(Typography.body.font.monospaced())
+                    .foregroundStyle(Palette.text)
+                    .textSelection(.enabled)
+                    .padding(Spacing.lg)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -229,9 +245,9 @@ struct ImportPanel: View {
     @State private var busy = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("工作区里旧 skill 做过的项目（只登记，不改动文件）").font(.headline)
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            HStack(spacing: Spacing.sm) {
+                Text("工作区里旧 skill 做过的项目（只登记，不改动文件）").textStyle(Typography.bodyStrong).foregroundStyle(Palette.text)
                 Spacer()
                 Button("换个文件夹…") {
                     if let dir = Panels.chooseDirectory("选择要扫描的文件夹") { scan(dir) }
@@ -241,7 +257,7 @@ struct ImportPanel: View {
                     .disabled(selection.isEmpty || busy)
             }
             Table(rows ?? [], selection: $selection) {
-                TableColumn("软件名") { row in Text(row.name).lineLimit(1) }
+                TableColumn("软件名") { row in Text(row.name).textStyle(Typography.body).lineLimit(1) }
                 TableColumn("状态") { row in
                     if row.managed { TagView(text: "已导入") } else {
                         let info = GRADE_LABEL[row.grade] ?? (row.grade, .neutral)
@@ -249,9 +265,11 @@ struct ImportPanel: View {
                     }
                 }
                 .width(110)
-                TableColumn("截图") { row in Text("\(row.json["screens"]?.int ?? 0)") }.width(50)
-                TableColumn("修改时间") { row in Text(formatTime(ms: row.json["mtime"]?.number ?? 0)).monospacedDigit() }.width(100)
+                TableColumn("截图") { row in Text("\(row.json["screens"]?.int ?? 0)").textStyle(Typography.body.number) }.width(50)
+                TableColumn("修改时间") { row in Text(formatTime(ms: row.json["mtime"]?.number ?? 0)).textStyle(Typography.body.number) }.width(100)
             }
+            .clipShape(Radius.shape(Radius.large))
+            .overlay(Radius.shape(Radius.large).strokeBorder(Palette.divider, lineWidth: Palette.hairline))
             .overlay { if scanning { ProgressView() } }
             .onChange(of: selection) { _, next in
                 // 已导入的不能再选
@@ -259,7 +277,7 @@ struct ImportPanel: View {
                 if !next.isDisjoint(with: managed) { selection = next.subtracting(managed) }
             }
         }
-        .padding(20)
+        .padding(Spacing.xl)
         .task { scan(nil) }
     }
 

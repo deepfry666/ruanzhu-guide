@@ -24,10 +24,10 @@ struct ExportSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("导出交付包（\(dirs.count) 个项目）").font(.title2.weight(.semibold))
-            Text("每个项目一个文件夹（名字是项目名）\(multiple ? "，多选时都放进同一个总文件夹" : "")。只复制，不改动原项目。").foregroundStyle(.secondary)
-            HStack {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            Text("导出交付包（\(dirs.count) 个项目）").textStyle(Typography.title).foregroundStyle(Palette.text)
+            Text("每个项目一个文件夹（名字是项目名）\(multiple ? "，多选时都放进同一个总文件夹" : "")。只复制，不改动原项目。").textStyle(Typography.body).foregroundStyle(Palette.textSecondary)
+            HStack(spacing: Spacing.sm) {
                 TextField("选择导出到哪里", text: .constant(target)).textFieldStyle(.roundedBorder).disabled(true)
                 Button("选择…") {
                     if let dir = Panels.chooseDirectory("选择导出位置", at: target) {
@@ -37,20 +37,20 @@ struct ExportSheet: View {
                 }
             }
             if multiple {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("总文件夹名")
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Text("总文件夹名").textStyle(Typography.captionStrong).foregroundStyle(Palette.textSecondary)
                     TextField("", text: $groupName)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit { if !target.isEmpty { inspect(target) } }
                     if !resolvedRoot.isEmpty {
-                        Text("将导出到：\(resolvedRoot)").font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                        Text("将导出到：\(resolvedRoot)").font(Typography.caption.font.monospaced()).foregroundStyle(Palette.textSecondary).textSelection(.enabled)
                     }
                 }
             }
             if !conflicts.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: Spacing.sm) {
                     Text("导出位置已经有 \(conflicts.count) 个同名文件夹：\(conflicts.prefix(5).map { $0["name"]?.jsString ?? "" }.joined(separator: "、"))\(conflicts.count > 5 ? " 等" : "")")
-                        .fontWeight(.semibold)
+                        .textStyle(Typography.bodyStrong).foregroundStyle(Palette.text)
                     Picker("", selection: Binding(get: { conflict ?? "" }, set: { conflict = $0.isEmpty ? nil : $0 })) {
                         Text("跳过这些项目，已有的文件夹不动").tag("skip")
                         Text("覆盖：已有的文件夹先移到废纸篓，再导出新的").tag("overwrite")
@@ -58,8 +58,8 @@ struct ExportSheet: View {
                     .pickerStyle(.radioGroup)
                     .labelsHidden()
                 }
-                .padding(12)
-                .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                .padding(Spacing.md)
+                .background(Palette.warning.tint, in: Radius.shape(Radius.medium))
             }
             if let items {
                 Table(items) {
@@ -69,7 +69,7 @@ struct ExportSheet: View {
                         if !item["ok"].isTruthy {
                             TagView(text: "跳过：\(item["reason"]?.jsString ?? "")")
                         } else {
-                            HStack(spacing: 4) {
+                            HStack(spacing: Spacing.xs) {
                                 if item["conflict"].isTruthy { TagView(text: "已有同名文件夹", tone: .orange) } else { TagView(text: "可导出", tone: .green) }
                                 ForEach(item["warnings"].items.map(\.jsString), id: \.self) { warning in
                                     TagView(text: warning.count > 14 ? "\(warning.prefix(14))…" : warning, tone: .gold).help(warning)
@@ -81,24 +81,22 @@ struct ExportSheet: View {
                 }
                 .frame(minHeight: 180, maxHeight: 300)
                 if !skippedUp.isEmpty {
-                    Text("\(skippedUp.count) 个项目不会导出（见上表）。").font(.callout).foregroundStyle(.secondary)
+                    Text("\(skippedUp.count) 个项目不会导出（见上表）。").textStyle(Typography.body).foregroundStyle(Palette.textSecondary)
                 }
             }
-            HStack {
+            HStack(spacing: Spacing.sm) {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button {
-                    run()
-                } label: {
-                    if busy { ProgressView().controlSize(.small) } else { Text(ready.isEmpty ? "导出" : "导出 \(exportCount) 个") }
+                MorphButton(title: ready.isEmpty ? "导出" : "导出 \(exportCount) 个", doneTitle: "已导出") {
+                    await run()
                 }
-                .buttonStyle(.primary)
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canExport || busy)
             }
         }
-        .padding(22)
+        .padding(Spacing.xl)
         .frame(width: 720)
+        .background(Palette.card)
         .task {
             target = model.settings.export.lastDir
             if multiple { groupName = model.core?.defaultExportGroupName() ?? "" }
@@ -118,27 +116,27 @@ struct ExportSheet: View {
         }
     }
 
-    func run() {
-        guard let core = model.core else { return }
+    func run() async -> Bool {
+        guard let core = model.core else { return false }
         busy = true
-        Task {
-            defer { busy = false }
-            do {
-                let result = try await core.exportBundles(dirs, targetDir: target, conflict: conflict ?? "skip", groupName: multiple ? groupName : "")
-                await model.reloadSettings()
-                onDone()
-                dismiss()
-                let skipped = result["skipped"].items.map { "\($0["name"]?.jsString ?? "")：\($0["reason"]?.jsString ?? "")" }
-                let root = result["targetDir"]?.string ?? target
-                model.alert = AlertItem(
-                    title: "已导出 \(result["exported"].items.count) 个项目",
-                    message: ([root] + (skipped.isEmpty ? [] : ["跳过 \(skipped.count) 个："] + skipped)).joined(separator: "\n"),
-                    actionTitle: "在访达中打开",
-                    action: { model.open(root) }
-                )
-            } catch {
-                model.toast(.error, messageOf(error))
-            }
+        defer { busy = false }
+        do {
+            let result = try await core.exportBundles(dirs, targetDir: target, conflict: conflict ?? "skip", groupName: multiple ? groupName : "")
+            await model.reloadSettings()
+            onDone()
+            dismiss()
+            let skipped = result["skipped"].items.map { "\($0["name"]?.jsString ?? "")：\($0["reason"]?.jsString ?? "")" }
+            let root = result["targetDir"]?.string ?? target
+            model.alert = AlertItem(
+                title: "已导出 \(result["exported"].items.count) 个项目",
+                message: ([root] + (skipped.isEmpty ? [] : ["跳过 \(skipped.count) 个："] + skipped)).joined(separator: "\n"),
+                actionTitle: "在访达中打开",
+                action: { model.open(root) }
+            )
+            return true
+        } catch {
+            model.toast(.error, messageOf(error))
+            return false
         }
     }
 }

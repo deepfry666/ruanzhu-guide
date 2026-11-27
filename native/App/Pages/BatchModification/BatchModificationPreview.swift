@@ -80,10 +80,14 @@ private struct ModificationActionRow: View {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 FlowLayout(spacing: Spacing.sm) {
                     if ["image", "text"].contains(type), action["target"].text != "all" {
-                        Picker("修改范围", selection: Binding(get: { type }, set: { action["type"] = .string($0) })) {
-                            Text("改图").tag("image")
-                            Text("只改文字").tag("text")
-                        }.pickerStyle(.segmented).fixedSize()
+                        SegmentedTabs(
+                            selection: Binding(get: { type }, set: { action["type"] = .string($0) }),
+                            items: [
+                                .init(value: "image", title: "改图"),
+                                .init(value: "text", title: "只改文字"),
+                            ]
+                        )
+                        .fixedSize()
                     } else { TagView(text: ["image": "改图", "text": "改文字", "data": "改数据", "overview": "改封面介绍", "design": "改设计说明", "replan": "重新规划"][type] ?? type) }
                     Text(action["targetLabel"].text).textStyle(Typography.bodyStrong)
                 }

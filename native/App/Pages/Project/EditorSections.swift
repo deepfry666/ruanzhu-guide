@@ -10,7 +10,7 @@ extension EditorTab {
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 TextEditor(text: $overview).textStyle(Typography.body).frame(minHeight: 80).scrollContentBackground(.hidden).disabled(!editable)
                 HStack(spacing: Spacing.sm) {
-                    Text("\(overview.jsTrimmed.jsLength) 字").textStyle(Typography.caption).foregroundStyle(.secondary)
+                    Text("\(overview.jsTrimmed.jsLength) 字").textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
                     if Rx.test(#"图\s*[0-9]"#, overview) { warning("正文里不要写「图N」，图注会自动生成") }
                 }
             }
@@ -35,7 +35,7 @@ extension EditorTab {
                         .frame(minHeight: 120)
                         .scrollContentBackground(.hidden)
                         .padding(Spacing.xs)
-                        .background(Palette.fill.color, in: RoundedRectangle(cornerRadius: Radius.small))
+                        .background(Palette.fill, in: Radius.shape(Radius.small))
                         .disabled(!editable)
                 }
                 .padding(Spacing.md)
@@ -62,7 +62,7 @@ extension EditorTab {
             Label(versions.isEmpty ? "历史" : "历史 \(versions.count)", systemImage: "clock.arrow.circlepath")
         }
         .menuStyle(.button)
-        .buttonStyle(.borderless)
+        .buttonStyle(.textAction)
         .fixedSize()
         .disabled(versions.isEmpty || !editable)
         .help(versions.isEmpty ? "还没有以前的版本" : "换回以前的文字")

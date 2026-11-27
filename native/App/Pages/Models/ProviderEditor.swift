@@ -10,6 +10,10 @@ struct ProviderEditor: View {
     @State private var draft: ImageProvider
     @State private var apiKey = ""
     @State private var mappingText = ""
+    @State private var nameError = false
+    @State private var nameShake = 0
+    @State private var mappingError = false
+    @State private var mappingShake = 0
     @State private var busy = false
 
     init(provider: ImageProvider, hasKey: Bool, onSaved: @escaping () -> Void) {
@@ -24,10 +28,10 @@ struct ProviderEditor: View {
     var isNew: Bool { provider.id.isEmpty }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(isNew ? "添加生图线路" : "编辑线路：\(provider.name)").font(.title2.weight(.semibold))
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            Text(isNew ? "添加生图线路" : "编辑线路：\(provider.name)").textStyle(Typography.title).foregroundStyle(Palette.text)
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: Spacing.lg) {
                     field("类型") {
                         Picker("", selection: Binding(get: { draft.preset }, set: { applyPreset($0) })) {
                             ForEach(PROVIDER_PRESET_ORDER, id: \.self) { Text(PROVIDER_PRESETS[$0]!.label).tag($0) }
@@ -35,25 +39,34 @@ struct ProviderEditor: View {
                         .pickerStyle(.radioGroup)
                         .labelsHidden()
                     }
-                    HStack(alignment: .top, spacing: 12) {
-                        field("名称") { TextField("例如：CPA 2.5", text: $draft.name).textFieldStyle(.roundedBorder) }
+                    HStack(alignment: .top, spacing: Spacing.md) {
+                        field("名称", error: nameError ? "请填写名称" : nil) {
+                            TextField("例如：CPA 2.5", text: $draft.name)
+                                .textFieldStyle(.roundedBorder)
+                                .overlay(Radius.shape(Radius.small).strokeBorder(nameError ? Palette.danger : Palette.divider, lineWidth: Palette.hairline))
+                                .overlay(Radius.shape(Radius.small).strokeBorder(Palette.errorRing, lineWidth: nameError ? Palette.ringWidth : 0))
+                                .shake(trigger: nameShake)
+                                .onChange(of: draft.name) { _, _ in nameError = false }
+                        }
                         field("密钥", hint: !isNew && hasKey ? "已保存，留空表示不修改" : "加密保存在本机") {
                             SecureField(!isNew && hasKey ? "••••••••" : "sk-...", text: $apiKey).textFieldStyle(.roundedBorder)
                         }
                     }
                     field("接口地址（通常以 /v1 结尾）") { TextField("https://example.com/v1", text: $draft.baseUrl).textFieldStyle(.roundedBorder) }
-                    HStack(alignment: .top, spacing: 12) {
+                    HStack(alignment: .top, spacing: Spacing.md) {
                         field("模型名") { TextField("gpt-image-2.5", text: $draft.model).textFieldStyle(.roundedBorder) }
                         field("画风组", hint: "同组的线路之间可以互相补发；留空等于模型名") { TextField("gpt-image-2.5", text: $draft.modelGroup).textFieldStyle(.roundedBorder) }
                     }
-                    HStack(alignment: .top, spacing: 12) {
+                    HStack(alignment: .top, spacing: Spacing.md) {
                         field("尺寸方式") {
-                            Picker("", selection: $draft.sizeMode) {
-                                Text("像素").tag("pixel")
-                                Text("比例").tag("ratio")
-                            }
-                            .pickerStyle(.radioGroup)
-                            .labelsHidden()
+                            SegmentedTabs(
+                                selection: $draft.sizeMode,
+                                items: [
+                                    .init(value: "pixel", title: "像素"),
+                                    .init(value: "ratio", title: "比例"),
+                                ]
+                            )
+                            .fixedSize()
                         }
                         .frame(width: 160)
                         if draft.sizeMode == "ratio" {
@@ -62,21 +75,30 @@ struct ProviderEditor: View {
                             field("像素尺寸") { TextField("864x1824", text: $draft.pixelSize).textFieldStyle(.roundedBorder) }
                         }
                     }
-                    HStack(alignment: .top, spacing: 12) {
+                    HStack(alignment: .top, spacing: Spacing.md) {
                         field("这条线路的并发数") { NumberField(value: draft.concurrency, range: 1...30) { draft.concurrency = $0 } }
                         field("单张最长等待", hint: "超时后换线路；异步任务转后台继续查") { DecimalField(value: draft.hardTimeoutSec, range: 20...1800, suffix: "秒") { draft.hardTimeoutSec = $0 } }
                         field("默认补发线", hint: "历史不足 5 次时使用") { DecimalField(value: draft.hedgeDefaultSec, range: 5...600, suffix: "秒") { draft.hedgeDefaultSec = $0 } }
                     }
                     if draft.preset == "custom" {
                         Banner(.info, "自定义映射：请求体里的 $model、$prompt、$size、$quality 会被替换；有 polling 字段就按异步任务处理。")
-                        field("声明式映射（JSON）") {
-                            TextEditor(text: $mappingText).font(.system(.callout, design: .monospaced)).frame(minHeight: 220).padding(4).cardBackground(cornerRadius: 8)
+                        field("声明式映射（JSON）", error: mappingError ? "自定义映射不是有效的 JSON" : nil) {
+                            TextEditor(text: $mappingText)
+                                .font(Typography.body.font.monospaced())
+                                .scrollContentBackground(.hidden)
+                                .frame(minHeight: 220)
+                                .padding(Spacing.sm)
+                                .surface(Radius.small, fill: Palette.windowBackground)
+                                .overlay(Radius.shape(Radius.small).strokeBorder(mappingError ? Palette.danger : Palette.divider, lineWidth: Palette.hairline))
+                                .overlay(Radius.shape(Radius.small).strokeBorder(Palette.errorRing, lineWidth: mappingError ? Palette.ringWidth : 0))
+                                .shake(trigger: mappingShake)
+                                .onChange(of: mappingText) { _, _ in mappingError = false }
                         }
                     }
                 }
-                .padding(.trailing, 6)
+                .padding(.trailing, Spacing.sm)
             }
-            HStack {
+            HStack(spacing: Spacing.sm) {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存") { save() }
@@ -85,15 +107,20 @@ struct ProviderEditor: View {
                     .disabled(busy)
             }
         }
-        .padding(22)
+        .padding(Spacing.xl)
         .frame(width: 720, height: draft.preset == "custom" ? 760 : 620)
+        .background(Palette.card)
     }
 
-    func field<Content: View>(_ label: String, hint: String? = nil, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(label).font(.callout.weight(.medium))
+    func field<Content: View>(_ label: String, hint: String? = nil, error: String? = nil, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            Text(label).textStyle(Typography.captionStrong).foregroundStyle(Palette.textSecondary)
             content()
-            if let hint { Text(hint).font(.caption).foregroundStyle(.secondary) }
+            if let error {
+                Text(error).textStyle(Typography.caption).foregroundStyle(Palette.danger)
+            } else if let hint {
+                Text(hint).textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -111,10 +138,18 @@ struct ProviderEditor: View {
     }
 
     func save() {
-        if draft.name.jsTrimmed.isEmpty { return model.toast(.warning, "请填写名称") }
+        if draft.name.jsTrimmed.isEmpty {
+            nameError = true
+            nameShake += 1
+            return model.toast(.warning, "请填写名称")
+        }
         var next = draft
         if next.preset == "custom" {
-            guard let mapping = try? JSON.parse(mappingText), mapping.isObject else { return model.toast(.error, "自定义映射不是有效的 JSON") }
+            guard let mapping = try? JSON.parse(mappingText), mapping.isObject else {
+                mappingError = true
+                mappingShake += 1
+                return model.toast(.error, "自定义映射不是有效的 JSON")
+            }
             next.mapping = mapping
         } else {
             next.mapping = nil

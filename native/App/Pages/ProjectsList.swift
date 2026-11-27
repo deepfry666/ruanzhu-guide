@@ -12,6 +12,7 @@ extension ProjectsView {
                 ProjectThumbnailView(thumbnail: row.thumbnail, height: Metrics.thumbnailList.height)
                     .frame(width: Metrics.thumbnailList.width, height: Metrics.thumbnailList.height)
                     .padding(.vertical, Spacing.xs)
+                    .staggeredEntrance(index: indices[row.dir] ?? 0, mode: entranceMode(row))
             }.width(Metrics.thumbnailList.width + Spacing.sm)
             // 勾选框：不用按住 ⌘ 也能多选；勾过之后单击行也是加选 / 取消
             TableColumn("") { row in
@@ -25,6 +26,7 @@ extension ProjectsView {
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .help("勾选多个项目")
+                .staggeredEntrance(index: indices[row.dir] ?? 0, mode: entranceMode(row))
             }
             .width(22)
             TableColumn("软件名", value: \.name) { row in
@@ -47,16 +49,24 @@ extension ProjectsView {
             }
                 .width(min: 90, ideal: 180)
             TableColumn("交付") { row in
-                if let files = row.bundleFiles {
-                    Text("\(files) 个文件")
-                } else if row.hasBundle {
-                    Text("有")
-                } else {
-                    Text("—").foregroundStyle(.secondary)
+                Group {
+                    if let files = row.bundleFiles {
+                        Text("\(files) 个文件")
+                    } else if row.hasBundle {
+                        Text("有")
+                    } else {
+                        Text("—").foregroundStyle(Palette.textSecondary)
+                    }
                 }
+                .staggeredEntrance(index: indices[row.dir] ?? 0, mode: entranceMode(row))
             }
             .width(min: 56, ideal: 70)
-            TableColumn("最近动过", value: \.recency) { row in Text(row.recency > 0 ? formatTime(ms: row.recency * 1000) : "—").foregroundStyle(.secondary).monospacedDigit() }
+            TableColumn("最近动过", value: \.recency) { row in
+                Text(row.recency > 0 ? formatTime(ms: row.recency * 1000) : "—")
+                    .foregroundStyle(Palette.textSecondary)
+                    .monospacedDigit()
+                    .staggeredEntrance(index: indices[row.dir] ?? 0, mode: entranceMode(row))
+            }
                 .width(min: 76, ideal: 90)
 
         }

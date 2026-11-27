@@ -22,8 +22,7 @@ struct TokenEditor: View {
                             } label: {
                                 Image(systemName: "xmark.circle.fill").font(.system(size: Metrics.iconSmall))
                             }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(Palette.textSecondary)
+                            .buttonStyle(.iconAction)
                         }
                         .padding(.horizontal, Spacing.sm)
                         .frame(minHeight: Metrics.tagHeight)

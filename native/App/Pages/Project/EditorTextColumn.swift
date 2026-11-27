@@ -17,7 +17,7 @@ extension EditorTab {
                         .frame(maxWidth: 240)
                         .disabled(!editable)
                     if edited { TagView(text: "人工改过", tone: .purple) }
-                    Text(length >= floor ? "\(length) 字 ✓" : "\(length) / \(floor) 字").monospacedDigit().foregroundStyle(length >= floor ? Color.secondary : Color.orange)
+                    Text(length >= floor ? "\(length) 字 ✓" : "\(length) / \(floor) 字").monospacedDigit().foregroundStyle(length >= floor ? Palette.textSecondary : Palette.warning)
                     if !data.readOnly {
                         historyMenu(id) { texts[id] = $0 }
                     }
@@ -28,7 +28,7 @@ extension EditorTab {
                     .frame(minHeight: 300)
                     .scrollContentBackground(.hidden)
                     .padding(Spacing.xs)
-                    .background(Palette.fill.color, in: RoundedRectangle(cornerRadius: Radius.small))
+                    .background(Palette.fill, in: Radius.shape(Radius.small))
                     .disabled(!editable)
                 if length < floor { warning("还差 \(floor - length) 字；不够 \(floor) 字时交付包生成不了") }
                 if Rx.test(#"图\s*[0-9]"#, text) { warning("正文里不要写「图N」，图注会自动生成") }
@@ -37,9 +37,9 @@ extension EditorTab {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 HStack {
                     Text("图\(index + 1)").fontWeight(.semibold)
-                    Text(screen.title).foregroundStyle(.secondary)
+                    Text(screen.title).foregroundStyle(Palette.textSecondary)
                 }
-                Text("截图检查通过后会自动写这一屏的说明。").foregroundStyle(.secondary)
+                Text("截图检查通过后会自动写这一屏的说明。").foregroundStyle(Palette.textSecondary)
             }
         }
     }

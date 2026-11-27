@@ -49,57 +49,56 @@ struct LivePanel: View {
         for (order, screen) in (data.plan?["screens"].items ?? []).enumerated() {
             titles[screen["id"]?.jsString ?? ""] = "图\(order + 1) \(screen["title"]?.jsString ?? "")"
         }
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Text("正在运行").font(.headline)
+        return VStack(alignment: .leading, spacing: Spacing.md) {
+            HStack(spacing: Spacing.sm) {
+                Text("正在运行").textStyle(Typography.bodyStrong).foregroundStyle(Palette.text)
                 if let reason = live["reason"]?.string { TagView(text: reason, tone: .blue) }
                 Spacer()
-                Text("\(Int(percent * 100))%").monospacedDigit().foregroundStyle(.secondary)
+                Text("\(Int(percent * 100))%").textStyle(Typography.body.number).foregroundStyle(Palette.textSecondary)
             }
             ProgressView(value: percent)
-            HStack(spacing: 18) {
+            HStack(spacing: Spacing.lg) {
                 HStack(spacing: 0) {
                     Text("当前：")
                     Text(step.flatMap { UI_STEP_LABELS[$0] } ?? "准备中").fontWeight(.semibold)
                     if let detail = live["detail"]?.string { Text("（\(detail)）") }
                     if let step, ["images", "gate"].contains(step), !screens.isEmpty { Text("  \(finished)/\(screens.count) 张") }
                 }
-                Text("本步 \(formatDuration(currentElapsed))").foregroundStyle(.secondary)
+                Text("本步 \(formatDuration(currentElapsed))").foregroundStyle(Palette.textSecondary)
                 HStack(spacing: 0) {
                     Text("已用时 ")
                     Text(formatDuration(now - (live["started"]?.number ?? now))).fontWeight(.semibold)
                 }
                 if let remainingMs {
-                    Text("预计还要约 \(formatDuration(max(remainingMs, 5000)))（按以往用时估算）").foregroundStyle(.secondary)
+                    Text("预计还要约 \(formatDuration(max(remainingMs, 5000)))（按以往用时估算）").foregroundStyle(Palette.textSecondary)
                 }
             }
-            .monospacedDigit()
-            .font(.callout)
+            .textStyle(Typography.body.number)
             if !screens.isEmpty {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], alignment: .leading, spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: Spacing.sm)], alignment: .leading, spacing: Spacing.sm) {
                     ForEach(screens.keys.sorted(), id: \.self) { id in
                         let screen = screens[id]!
                         let status = SCREEN_STATUS[screen["status"]?.string ?? ""] ?? (screen["status"]?.jsString ?? "", .neutral)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(titles[id] ?? id).font(.callout.weight(.semibold)).lineLimit(1)
-                            HStack(spacing: 4) {
+                        VStack(alignment: .leading, spacing: Spacing.xs) {
+                            Text(titles[id] ?? id).textStyle(Typography.bodyStrong).lineLimit(1)
+                            HStack(spacing: Spacing.xs) {
                                 TagView(text: status.label, tone: status.tone)
                                 if let started = screen["startedAt"]?.number, ["generating", "regenerating", "generated"].contains(screen["status"]?.string ?? "") {
-                                    Text(formatDuration((screen["finishedAt"]?.number ?? now) - started)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                                    Text(formatDuration((screen["finishedAt"]?.number ?? now) - started)).textStyle(Typography.caption.number).foregroundStyle(Palette.textSecondary)
                                 }
                             }
                             if screen["provider"]?.string != nil || screen["hedged"].isTruthy {
-                                Text("\(screen["provider"]?.jsString ?? "")\(screen["hedged"].isTruthy ? " · 补发过" : "")").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                Text("\(screen["provider"]?.jsString ?? "")\(screen["hedged"].isTruthy ? " · 补发过" : "")").textStyle(Typography.caption).foregroundStyle(Palette.textSecondary).lineLimit(1)
                             }
                         }
-                        .padding(8)
+                        .padding(Spacing.md)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(Palette.windowBackground, in: Radius.shape(Radius.medium))
                     }
                 }
             }
         }
-        .padding(16)
-        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        .padding(Spacing.lg)
+        .surface()
     }
 }

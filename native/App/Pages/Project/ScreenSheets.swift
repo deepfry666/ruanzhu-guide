@@ -27,8 +27,8 @@ struct ScreenPreviewSheet: View {
             }
             HStack(alignment: .top, spacing: Spacing.xl) {
                 ScreenImage(path: screen.file, version: screen.mtime, maxPixel: 2000)
-                    .frame(width: 340)
-                    .clipShape(RoundedRectangle(cornerRadius: Radius.large))
+                    .frame(width: Metrics.editorImageWidth)
+                    .clipShape(Radius.shape(Radius.large))
                 ScrollView {
                     VStack(alignment: .leading, spacing: Spacing.md) {
                         SettingsGroup {
@@ -38,11 +38,11 @@ struct ScreenPreviewSheet: View {
                             SettingsRow(label: "生成时间") { Text(formatTime(screen.state["generatedAt"]?.string)) }
                         }
                         if let inventory = gate?["inventory"]?.string {
-                            Text("看图模型抄录的界面内容").font(.headline)
+                            Text("看图模型抄录的界面内容").textStyle(Typography.bodyStrong)
                             Text(inventory).textSelection(.enabled)
                         }
                         if let visible = gate?["visibleText"]?.array, !visible.isEmpty {
-                            Text("可见文字：\(visible.map(\.jsString).joined(separator: " · "))").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                            Text("可见文字：\(visible.map(\.jsString).joined(separator: " · "))").textStyle(Typography.caption).foregroundStyle(Palette.textSecondary).textSelection(.enabled)
                         }
                     }
                 }
@@ -62,10 +62,10 @@ struct PromptSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
-            Text("\(screen.id) 的生图提示词").font(.title2.weight(.semibold))
-            Text("末尾的「不要渲染软件名」禁令由程序自动保留，删掉也会被加回去。").foregroundStyle(.secondary)
+            Text("\(screen.id) 的生图提示词").textStyle(Typography.title)
+            Text("末尾的「不要渲染软件名」禁令由程序自动保留，删掉也会被加回去。").foregroundStyle(Palette.textSecondary)
             TextEditor(text: $text)
-                .font(.system(.callout, design: .monospaced))
+                .font(Typography.body.font.monospaced())
                 .padding(Spacing.xs)
                 .cardBackground(cornerRadius: Radius.small)
             HStack {
@@ -88,16 +88,16 @@ struct AlternatesSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
             HStack {
-                Text("\(screen.id) 的备选图").font(.title2.weight(.semibold))
+                Text("\(screen.id) 的备选图").textStyle(Typography.title)
                 Spacer()
                 Button("关闭") { dismiss() }.keyboardShortcut(.cancelAction)
             }
-            Text("另一条线路同时出的备选图，换上后要重新检查。").foregroundStyle(.secondary)
+            Text("另一条线路同时出的备选图，换上后要重新检查。").foregroundStyle(Palette.textSecondary)
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: Spacing.lg)], spacing: Spacing.lg) {
                     ForEach(screen.alternates, id: \.self) { item in
                         VStack(spacing: Spacing.sm) {
-                            ScreenImage(path: item["file"]?.string).frame(height: 260).clipShape(RoundedRectangle(cornerRadius: Radius.medium))
+                            ScreenImage(path: item["file"]?.string).frame(height: 260).clipShape(Radius.shape(Radius.medium))
                             Button("用这张") { onUse(item["file"]?.string ?? "") }
                         }
                     }
@@ -118,21 +118,21 @@ struct ScreenHistorySheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
             HStack {
-                Text("\(screen.id) 以前的截图").font(.title2.weight(.semibold))
+                Text("\(screen.id) 以前的截图").textStyle(Typography.title)
                 Spacer()
                 Button("关闭") { dismiss() }.keyboardShortcut(.cancelAction)
             }
-            Text("换回后要重新检查，这一屏的说明会按换回的截图重写（人工改过的除外）。现在这张也会存进来，随时能再换。").foregroundStyle(.secondary)
+            Text("换回后要重新检查，这一屏的说明会按换回的截图重写（人工改过的除外）。现在这张也会存进来，随时能再换。").foregroundStyle(Palette.textSecondary)
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: Spacing.lg)], spacing: Spacing.lg) {
                     VStack(spacing: Spacing.sm) {
-                        ScreenImage(path: screen.file, version: screen.mtime).frame(height: 280).clipShape(RoundedRectangle(cornerRadius: Radius.medium))
-                        Text("现在用的").font(.caption.weight(.semibold))
+                        ScreenImage(path: screen.file, version: screen.mtime).frame(height: 280).clipShape(Radius.shape(Radius.medium))
+                        Text("现在用的").textStyle(Typography.captionStrong)
                     }
                     ForEach(Array(screen.history.enumerated()), id: \.offset) { _, item in
                         VStack(spacing: Spacing.sm) {
-                            ScreenImage(path: item["file"]?.string).frame(height: 280).clipShape(RoundedRectangle(cornerRadius: Radius.medium))
-                            Text(formatTime(item["at"]?.string)).font(.caption).foregroundStyle(.secondary)
+                            ScreenImage(path: item["file"]?.string).frame(height: 280).clipShape(Radius.shape(Radius.medium))
+                            Text(formatTime(item["at"]?.string)).textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
                             Button("换回这张") { onUse(item["file"]?.string ?? "") }
                         }
                     }

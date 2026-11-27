@@ -5,27 +5,38 @@ import SwiftUI
 struct ModelsView: View {
     @Environment(AppModel.self) private var model
 
+    private var activeTab: String {
+        ["providers", "llm", "calls"].contains(model.modelsTab) ? model.modelsTab : "providers"
+    }
+
     var body: some View {
-        @Bindable var model = model
-        Group {
-            switch model.modelsTab {
-            case "llm": LlmView()
-            case "calls": CallsView()
-            default: ProvidersView()
+        VStack(spacing: 0) {
+            HStack(spacing: Spacing.lg) {
+                Text("模型与线路").textStyle(Typography.title).foregroundStyle(Palette.text)
+                Spacer()
+                SegmentedTabs(
+                    selection: Binding(get: { activeTab }, set: { model.modelsTab = $0 }),
+                    items: [
+                        .init(value: "providers", title: "生图线路"),
+                        .init(value: "llm", title: "大模型"),
+                        .init(value: "calls", title: "调用记录"),
+                    ]
+                )
+                Spacer()
             }
-        }
-        .navigationTitle("模型与线路")
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker("", selection: $model.modelsTab) {
-                    Text("生图线路").tag("providers")
-                    Text("大模型").tag("llm")
-                    Text("调用记录").tag("calls")
+            .padding(.horizontal, Spacing.xl)
+            .frame(height: Metrics.toolbarHeight)
+            Rectangle().fill(Palette.divider).frame(height: Palette.hairline)
+            Group {
+                switch activeTab {
+                case "llm": LlmView()
+                case "calls": CallsView()
+                default: ProvidersView()
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
             }
         }
+        .background(Palette.windowBackground)
+        .navigationTitle("模型与线路")
     }
 }
 
@@ -47,9 +58,21 @@ struct ProvidersView: View {
 
     var body: some View {
         PageScroll {
-            SettingsGroup(title: "线路（按顺序优先使用）") {
+            SettingsGroup(
+                title: "线路（按顺序优先使用）",
+                trailing: AnyView(
+                    Button { editing = newProviderFromPreset("openai-sync", id: "", name: "") } label: {
+                        Label("添加线路", systemImage: "plus")
+                    }
+                    .buttonStyle(.primary)
+                    .help("添加线路")
+                )
+            ) {
                 if providers.isEmpty {
-                    Text("还没有线路。点「添加线路」，或者「从旧 skill 导入」。").foregroundStyle(.secondary).padding(14)
+                    Text("还没有线路。点「添加线路」，或者「从旧 skill 导入」。")
+                        .textStyle(Typography.body)
+                        .foregroundStyle(Palette.textSecondary)
+                        .padding(Spacing.lg)
                 } else {
                     providerHeader
                     ForEach(Array(providers.enumerated()), id: \.element.id) { index, provider in
@@ -61,20 +84,17 @@ struct ProvidersView: View {
         }
         .task(id: model.callsRevision) { await reloadStatuses() }
         .task(id: model.settingsRevision) { await reloadStatuses() }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { editing = newProviderFromPreset("openai-sync", id: "", name: "") } label: { Label("添加线路", systemImage: "plus") }
-                    .buttonStyle(.primary)
-                    .help("添加线路")
-            }
-        }
         .sheet(item: $editing) { provider in
             ProviderEditor(provider: provider, hasKey: model.providerKeys[provider.id] ?? false) {
                 editing = nil
                 Task { await reloadAll() }
             }
+            .environment(model).designSystem()
+            .overlay(alignment: .bottom) { ToastOverlay(toasts: model.toasts) }
         }
-        .sheet(item: $probe) { state in ProbeSheet(state: state) }
+        .sheet(item: $probe) { state in
+            ProbeSheet(state: state).designSystem()
+        }
         .confirmationDialog("真实生成一张测速？", isPresented: Binding(get: { realProbe != nil }, set: { if !$0 { realProbe = nil } }), titleVisibility: .visible) {
             Button("开始测速") { if let provider = realProbe { runProbe(provider, real: true) } }
         } message: {
@@ -94,37 +114,37 @@ struct ProvidersView: View {
     }
 
     var providerHeader: some View {
-        HStack(spacing: 10) {
-            Text("顺序").frame(width: 40, alignment: .leading)
+        HStack(spacing: Spacing.md) {
+            Text("顺序").frame(width: 48, alignment: .leading)
             Text("线路").frame(maxWidth: .infinity, alignment: .leading)
-            Text("状态").frame(width: 110, alignment: .leading)
-            Text("耗时 P50 / P90").frame(width: 106, alignment: .leading).help("最近 50 次成功调用")
+            Text("状态").frame(width: 112, alignment: .leading)
+            Text("耗时 P50 / P90").frame(width: 108, alignment: .leading).help("最近 50 次成功调用")
             Text("成功率").frame(width: 56, alignment: .leading)
             Text("补发线").frame(width: 60, alignment: .leading).help("超过这个时间还没出图就补发到另一条线路；有 5 次以上历史后按实际耗时自动计算")
             Text("并发").frame(width: 36, alignment: .leading)
             Text("启用").frame(width: 44, alignment: .leading)
-            Text("").frame(width: 96)
+            Text("").frame(width: 112)
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .textStyle(Typography.captionStrong)
+        .foregroundStyle(Palette.textSecondary)
+        .padding(.horizontal, Spacing.lg)
+        .padding(.vertical, Spacing.sm)
     }
 
     func providerRow(_ index: Int, _ provider: ImageProvider) -> some View {
         let status = statuses[provider.id] ?? .emptyObject
         let isAsync = PROVIDER_PRESETS[provider.preset]?.protocol == "async"
-        return HStack(spacing: 10) {
-            HStack(spacing: 0) {
+        return HStack(spacing: Spacing.md) {
+            HStack(spacing: Spacing.xs) {
                 Button { move(index, -1) } label: { Image(systemName: "chevron.up") }.disabled(index == 0)
                 Button { move(index, 1) } label: { Image(systemName: "chevron.down") }.disabled(index == providers.count - 1)
             }
-            .buttonStyle(.borderless)
-            .frame(width: 40, alignment: .leading)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(provider.name).fontWeight(.semibold).lineLimit(1).truncationMode(.middle).help(provider.name)
+            .buttonStyle(.iconAction)
+            .frame(width: 48, alignment: .leading)
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text(provider.name).textStyle(Typography.bodyStrong).foregroundStyle(Palette.text).lineLimit(1).truncationMode(.middle).help(provider.name)
                 Text("\(provider.model) · \(isAsync ? "异步" : "同步") · \(provider.sizeMode == "ratio" ? "比例" : provider.pixelSize)")
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .textStyle(Typography.caption).foregroundStyle(Palette.textSecondary).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Group {
@@ -133,7 +153,7 @@ struct ProvidersView: View {
                 } else if !(model.providerKeys[provider.id] ?? false) {
                     TagView(text: "没有密钥", tone: .red).help("编辑这条线路，填好密钥后才能用")
                 } else if let reason = status["unavailable"]?.string {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
                         TagView(text: reason.components(separatedBy: "：").first ?? reason, tone: .orange).help(reason)
                         Button("手动恢复") {
                             Task {
@@ -141,31 +161,34 @@ struct ProvidersView: View {
                                 await reloadStatuses()
                             }
                         }
-                        .buttonStyle(.link)
-                        .font(.caption)
+                        .buttonStyle(.textAction)
                     }
                 } else {
                     TagView(text: "可用", tone: .green)
                 }
             }
-            .frame(width: 110, alignment: .leading)
-            Text(status["p50"]?.number.map { "\(formatSeconds($0)) / \(formatSeconds(status["p90"]?.number))" } ?? "—").monospacedDigit().frame(width: 106, alignment: .leading)
-            Text(status["successRate"]?.number.map { "\(Int(jsRound($0 * 100)))%" } ?? "—").monospacedDigit().frame(width: 56, alignment: .leading)
-            Text(formatSeconds(status["hedgeThresholdSec"]?.number)).monospacedDigit().frame(width: 60, alignment: .leading)
-            Text("\(provider.concurrency)").frame(width: 36, alignment: .leading)
+            .frame(width: 112, alignment: .leading)
+            Text(status["p50"]?.number.map { "\(formatSeconds($0)) / \(formatSeconds(status["p90"]?.number))" } ?? "—")
+                .textStyle(Typography.body.number).foregroundStyle(Palette.text).frame(width: 108, alignment: .leading)
+            Text(status["successRate"]?.number.map { "\(Int(jsRound($0 * 100)))%" } ?? "—")
+                .textStyle(Typography.body.number).foregroundStyle(Palette.text).frame(width: 56, alignment: .leading)
+            Text(formatSeconds(status["hedgeThresholdSec"]?.number))
+                .textStyle(Typography.body.number).foregroundStyle(Palette.text).frame(width: 60, alignment: .leading)
+            Text("\(provider.concurrency)")
+                .textStyle(Typography.body.number).foregroundStyle(Palette.text).frame(width: 36, alignment: .leading)
             Toggle("", isOn: Binding(get: { provider.enabled }, set: { value in toggle(provider, value) }))
                 .toggleStyle(.switch).controlSize(.mini).labelsHidden().frame(width: 44, alignment: .leading)
-            HStack(spacing: 2) {
+            HStack(spacing: Spacing.xs) {
                 Button { runProbe(provider, real: false) } label: { Image(systemName: "testtube.2") }.help("测试连通性（免费）")
                 Button { realProbe = provider } label: { Image(systemName: "bolt") }.help("真实生成一张测速（会扣一张图的费用）")
                 Button { editing = provider } label: { Image(systemName: "pencil") }.help("编辑")
                 Button(role: .destructive) { deleting = provider } label: { Image(systemName: "trash") }.help("删除")
             }
-            .buttonStyle(.borderless)
-            .frame(width: 96, alignment: .trailing)
+            .buttonStyle(.iconAction)
+            .frame(width: 112, alignment: .trailing)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, Spacing.lg)
+        .padding(.vertical, Spacing.sm)
     }
 
     func reloadStatuses() async {
@@ -216,9 +239,9 @@ struct ProbeSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Spacing.md) {
             HStack {
-                Text("测试结果：\(state.providerName)").font(.title2.weight(.semibold))
+                Text("测试结果：\(state.providerName)").textStyle(Typography.title).foregroundStyle(Palette.text)
                 Spacer()
                 Button("关闭") { dismiss() }.keyboardShortcut(.cancelAction)
             }
@@ -236,21 +259,28 @@ struct ProbeSheet: View {
                     if image["ok"].isTruthy {
                         Banner(.success, "出图成功：\(Int(jsRound((image["durationMs"]?.number ?? 0) / 1000))) 秒，发送尺寸 \(image["requestSize"].text)，返回 \(image["width"]?.int ?? 0)×\(image["height"]?.int ?? 0)")
                         if let dataUrl = image["dataUrl"]?.string, let data = Data(base64Encoded: String(dataUrl.split(separator: ",").last ?? "")), let nsImage = NSImage(data: data) {
-                            Image(nsImage: nsImage).resizable().aspectRatio(contentMode: .fit).frame(maxHeight: 360).clipShape(RoundedRectangle(cornerRadius: 10)).frame(maxWidth: .infinity)
+                            Image(nsImage: nsImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxHeight: 360)
+                                .clipShape(Radius.shape(Radius.medium))
+                                .overlay(Radius.shape(Radius.medium).strokeBorder(Palette.screenshotEdge, lineWidth: Palette.hairline))
+                                .frame(maxWidth: .infinity)
                         }
                     } else {
                         Banner(.error, "出图失败：\(image["reason"].text)")
                     }
                 }
             } else {
-                HStack(spacing: 10) {
+                HStack(spacing: Spacing.sm) {
                     ProgressView().controlSize(.small)
-                    Text("测试中…真实生图通常需要 15–90 秒。")
+                    Text("测试中…真实生图通常需要 15–90 秒。").textStyle(Typography.body).foregroundStyle(Palette.textSecondary)
                 }
             }
         }
-        .padding(22)
-        .frame(width: 600)
+        .padding(Spacing.xl)
+        .frame(width: Metrics.dialogNewWidth)
+        .background(Palette.card)
     }
 }
 
@@ -268,17 +298,17 @@ struct StrategyGroups: View {
     var body: some View {
         let image = model.settings.image
         let hedge = image.hedge
-        HStack(alignment: .top, spacing: 20) {
+        AdaptiveColumns(breakpoint: 760, spacing: Spacing.lg) {
             SettingsGroup(title: "生图") {
                 SettingsRow(label: "目标尺寸", info: "只收比例的线路会自动换成最接近的比例（864x1824 → 1:2）。") {
-                    CommitTextField(placeholder: "864x1824", value: image.targetSize) { save(["targetSize": .string($0)]) }.frame(width: 120)
+                    CommitTextField(placeholder: "864x1824", value: image.targetSize) { save(["targetSize": .string($0)]) }.frame(width: Metrics.formLabelWidth)
                 }
                 SettingsRow(label: "质量") {
                     Picker("", selection: Binding(get: { image.quality }, set: { save(["quality": .string($0)]) })) {
                         ForEach(["low", "medium", "high"], id: \.self) { Text($0).tag($0) }
                     }
                     .labelsHidden()
-                    .frame(width: 120, alignment: .trailing)
+                    .frame(width: Metrics.formLabelWidth, alignment: .trailing)
                 }
                 SettingsRow(label: "全局并发上限", info: "所有项目加起来同时生成的图片数。") {
                     ConcurrencyPicker(value: image.globalConcurrency, presets: IMAGE_CONCURRENCY_PRESETS, unit: "张") { save(["globalConcurrency": .number(Double($0))]) }
@@ -316,5 +346,3 @@ struct StrategyGroups: View {
         }
     }
 }
-
-

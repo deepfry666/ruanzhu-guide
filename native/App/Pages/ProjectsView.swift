@@ -59,14 +59,14 @@ struct ProjectsView: View {
                     HStack(spacing: Spacing.md) {
                         groupBar
                         HStack(spacing: Spacing.xs) {
-                            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                            Image(systemName: "magnifyingglass").foregroundStyle(Palette.textSecondary)
                             TextField("在全部项目里搜索软件名", text: Binding(get: { model.listQuery }, set: { model.listQuery = $0 }))
                                 .textFieldStyle(.roundedBorder)
                                 .focused($searchFocused)
                                 .onExitCommand { model.listQuery = ""; searchFocused = false }
                             if !query.isEmpty {
                                 Button { model.listQuery = "" } label: { Image(systemName: "xmark.circle.fill") }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(.iconAction)
                                     .help("清除搜索")
                                     .accessibilityLabel("清除搜索")
                             }

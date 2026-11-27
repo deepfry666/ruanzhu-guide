@@ -58,7 +58,7 @@ struct CheckBadge: View {
         .frame(width: size, height: size)
         .animation(reduceMotion ? nil : Motion.easeOut(0.25), value: checked)
         .keyframeAnimator(initialValue: CGFloat(1), trigger: pops) { view, scale in
-            view.scaleEffect(scale)
+            view.scaleEffect(reduceMotion ? 1 : scale)
         } keyframes: { _ in
             KeyframeTrack {
                 LinearKeyframe(1.08, duration: 0.2, timingCurve: Motion.springCurve)

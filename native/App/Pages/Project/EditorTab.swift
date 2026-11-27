@@ -107,7 +107,7 @@ struct EditorTab: View {
                         screenshotList.frame(width: Metrics.sidebarWidth)
                         VStack(alignment: .leading, spacing: Spacing.lg) {
                             if !detailReady {
-                                Text("正在载入编辑内容…").foregroundStyle(.secondary)
+                                Text("正在载入编辑内容…").foregroundStyle(Palette.textSecondary)
                                     .frame(maxWidth: .infinity, minHeight: Metrics.gridShotHeight)
                             } else if selectedScreen == "overview" { coverEditor }
                             else if selectedScreen == "design" { designEditor }

@@ -122,6 +122,19 @@ final class DevControl {
             NSApp.windows.filter(\.isMiniaturized).forEach { $0.deminiaturize(nil) }
             NSApp.activate(ignoringOtherApps: true)
             NSApp.windows.first { $0.isVisible }?.makeKeyAndOrderFront(nil)
+        case "screenshot":
+            guard AppModel.isTrial, !value.isEmpty,
+                  let window = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
+                  let view = window.contentView else { return }
+            view.layoutSubtreeIfNeeded()
+            if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                window.effectiveAppearance.performAsCurrentDrawingAppearance {
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                }
+                if let png = rep.representation(using: .png, properties: [:]) {
+                    try? png.write(to: URL(fileURLWithPath: value))
+                }
+            }
         default: break
         }
     }

@@ -77,8 +77,8 @@ private struct ModificationNoteRow: View {
                             Button(target.label) { mutate { try await $0.pipeline.setFeedbackTarget(data.dir, item.id ?? "", target.value.isEmpty ? nil : target.value) } }
                         }
                     }.fixedSize().help("改哪里")
-                    Button("编辑") { state.editingNotes[key] = item.text ?? "" }.buttonStyle(.borderless)
-                    Button("删除", role: .destructive) { mutate { try await $0.pipeline.removeFeedback(data.dir, item.id ?? "") } }.buttonStyle(.borderless)
+                    Button("编辑") { state.editingNotes[key] = item.text ?? "" }.buttonStyle(.textAction)
+                    Button("删除", role: .destructive) { mutate { try await $0.pipeline.removeFeedback(data.dir, item.id ?? "") } }.buttonStyle(.textAction)
                 }
             }
         }

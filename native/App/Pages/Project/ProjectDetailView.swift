@@ -40,7 +40,7 @@ struct ProjectDetailView: View {
             } else {
                 VStack {
                     backToProjects
-                    Text("正在打开项目…").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    Text("正在打开项目…").foregroundStyle(Palette.textSecondary).frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
@@ -260,7 +260,7 @@ struct ProjectDetailView: View {
                     case .delivery: DeliveryTab(data: data, running: running, onChanged: refresh)
                     }
                 } else {
-                    Text("正在载入内容…").foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: Metrics.gridShotHeight)
+                    Text("正在载入内容…").foregroundStyle(Palette.textSecondary).frame(maxWidth: .infinity, minHeight: Metrics.gridShotHeight)
                 }
             }
             .task {
@@ -319,7 +319,7 @@ struct RenameSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
             Text("改软件名").font(.title2.weight(.semibold))
-            Text("不会重新规划和生图；会用新名字重新检查截图，再重建交付包。").foregroundStyle(.secondary)
+            Text("不会重新规划和生图；会用新名字重新检查截图，再重建交付包。").foregroundStyle(Palette.textSecondary)
             TextField("软件名（含版本号）", text: $value).textFieldStyle(.roundedBorder)
             HStack {
                 Spacer()

@@ -35,19 +35,21 @@ extension EditorTab {
                 .lineLimit(1...3)
                 .disabled(!editable)
             FlowLayout(spacing: Spacing.sm) {
-                Picker("修改范围", selection: Binding(get: { changeScopes[screen.id] ?? .image }, set: { changeScopes[screen.id] = $0 })) {
-                    ForEach(ScreenChangeScope.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
+                SegmentedTabs(
+                    selection: Binding(get: { changeScopes[screen.id] ?? .image }, set: { changeScopes[screen.id] = $0 }),
+                    items: ScreenChangeScope.allCases.map { .init(value: $0, title: $0.title) }
+                )
                 .fixedSize()
                 .disabled(!editable)
-                Button(submittingChange ? "正在提交…" : "修改") {
+                MorphButton(title: "修改", doneTitle: "已开始") {
                     let change = ScreenChangeRequest(screenID: screen.id, label: "图\(index + 1)「\(screen.title)」", instruction: instruction, scope: scope)
-                    if scope == .image || instruction.isEmpty { pendingChange = change }
-                    else { submitChange(change) }
+                    if scope == .image || instruction.isEmpty {
+                        pendingChange = change
+                        return false
+                    }
+                    return await performChange(change)
                 }
-                .buttonStyle(.primary)
-                .disabled(!editable || unavailable)
+                .disabled(!editable || unavailable || submittingChange)
             }
             Text(unavailable ? (scope == .text ? "这一屏还没有说明，请先完成内容生成。" : "这一屏还没有截图；留空可按原要求生成。") : "留空按原要求重做；填写要求后按要求修改。图和文字会产生图片费用，执行前需要确认；人工改过的文字保留，需核对。只改文字不生图。")
                 .textStyle(Typography.caption)
@@ -56,34 +58,38 @@ extension EditorTab {
     }
 
     func submitChange(_ change: ScreenChangeRequest) {
+        Task { _ = await performChange(change) }
+    }
+
+    @discardableResult
+    func performChange(_ change: ScreenChangeRequest) async -> Bool {
         pendingChange = nil
-        guard editable, data.screens.contains(where: { $0.id == change.screenID }), let core = model.core else { return }
+        guard editable, data.screens.contains(where: { $0.id == change.screenID }), let core = model.core else { return false }
         submittingChange = true
-        Task {
-            defer { submittingChange = false }
-            guard await autosave() else {
-                model.toast(.error, "文字尚未保存，未开始修改。请先解决保存问题后重试。")
-                return
-            }
-            let ok = await model.perform("已开始修改，进度在页面上方") {
-                if change.instruction.isEmpty {
-                    if change.scope == .image {
-                        _ = try core.pipeline.regenerateScreen(data.dir, change.screenID)
-                    } else {
-                        _ = try await core.pipeline.rewriteContent(data.dir, [change.screenID])
-                    }
+        defer { submittingChange = false }
+        guard await autosave() else {
+            model.toast(.error, "文字尚未保存，未开始修改。请先解决保存问题后重试。")
+            return false
+        }
+        let ok = await model.perform("已开始修改，进度在页面上方") {
+            if change.instruction.isEmpty {
+                if change.scope == .image {
+                    _ = try core.pipeline.regenerateScreen(data.dir, change.screenID)
                 } else {
-                    let action: JSON = .obj([
-                        "type": .string(change.scope.rawValue), "target": .string(change.screenID),
-                        "targetLabel": .string(change.label), "instruction": .string(change.instruction), "items": [],
-                    ])
-                    _ = try await core.pipeline.applyFeedback(data.dir, actions: [action])
+                    _ = try await core.pipeline.rewriteContent(data.dir, [change.screenID])
                 }
-            }
-            if ok {
-                if (changeRequests[change.screenID] ?? "").jsTrimmed == change.instruction { changeRequests[change.screenID] = "" }
-                onChanged()
+            } else {
+                let action: JSON = .obj([
+                    "type": .string(change.scope.rawValue), "target": .string(change.screenID),
+                    "targetLabel": .string(change.label), "instruction": .string(change.instruction), "items": [],
+                ])
+                _ = try await core.pipeline.applyFeedback(data.dir, actions: [action])
             }
         }
+        if ok {
+            if (changeRequests[change.screenID] ?? "").jsTrimmed == change.instruction { changeRequests[change.screenID] = "" }
+            onChanged()
+        }
+        return ok
     }
 }

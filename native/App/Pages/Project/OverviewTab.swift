@@ -46,12 +46,13 @@ struct OverviewTab: View {
         let screenCount = request["screenCount"]?.int
         return SettingsGroup(title: "项目设置", footer: "改截图数、重点功能或平台，下次运行会重新规划并重新生图。") {
             SettingsRow(label: "截图数") {
-                Picker("", selection: Binding(get: { screenCount == nil ? "auto" : "fixed" }, set: { value in update(["screenCount": value == "auto" ? .null : .number(Double(screenCount ?? 7))]) })) {
-                    Text("固定").tag("fixed")
-                    Text("按功能决定").tag("auto")
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                SegmentedTabs(
+                    selection: Binding(get: { screenCount == nil ? "auto" : "fixed" }, set: { value in update(["screenCount": value == "auto" ? .null : .number(Double(screenCount ?? 7))]) }),
+                    items: [
+                        .init(value: "fixed", title: "固定"),
+                        .init(value: "auto", title: "按功能决定"),
+                    ]
+                )
                 .fixedSize()
                 if let screenCount {
                     NumberField(value: screenCount, range: 2...15, suffix: "屏", width: 44) { update(["screenCount": .number(Double($0))]) }
@@ -125,16 +126,16 @@ struct StepsIndicator: View {
                         CheckBadge(checked: ["done", "skipped"].contains(status))
                         if !["done", "skipped"].contains(status) { icon(status, index: index) }
                     }
-                    Text(UI_STEP_LABELS[step] ?? step).font(.caption.weight(.medium)).foregroundStyle(status == "pending" ? .secondary : .primary)
+                    Text(UI_STEP_LABELS[step] ?? step).textStyle(Typography.captionStrong).foregroundStyle(status == "pending" ? Palette.textSecondary : Palette.text)
                     if status == "skipped" {
-                        Text("不需要").font(.caption2).foregroundStyle(.secondary)
+                        Text("不需要").textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
                     } else if status == "review" {
-                        Text("待确认").font(.caption2).foregroundStyle(Palette.warning)
+                        Text("待确认").textStyle(Typography.caption).foregroundStyle(Palette.warning)
                     }
                 }
                 .frame(maxWidth: .infinity)
                 if index < STEP_ORDER.count - 1 {
-                    Rectangle().fill(["done", "skipped"].contains(status) ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.25)).frame(height: 2).padding(.top, Spacing.md).frame(maxWidth: 40)
+                    Rectangle().fill(["done", "skipped"].contains(status) ? Palette.success : Palette.divider).frame(height: 2).padding(.top, Spacing.md).frame(maxWidth: 40)
                 }
             }
         }
@@ -143,11 +144,13 @@ struct StepsIndicator: View {
     @ViewBuilder
     func icon(_ status: String, index: Int) -> some View {
         switch status {
-        case "done", "skipped": Image(systemName: "checkmark").font(.caption.bold()).foregroundStyle(.white)
-        case "failed": Image(systemName: "xmark").font(.caption.bold()).foregroundStyle(.white)
+        case "done", "skipped": Image(systemName: "checkmark").textStyle(Typography.captionStrong).foregroundStyle(Palette.onColor)
+        case "failed":
+            Circle().fill(Palette.danger).frame(width: Spacing.xl, height: Spacing.xl)
+                .overlay { Image(systemName: "xmark").textStyle(Typography.captionStrong).foregroundStyle(Palette.onColor) }
         case "running": ProgressView().controlSize(.mini)
-        case "review": Image(systemName: "hand.raised.fill").font(.caption).foregroundStyle(Palette.warning)
-        default: Text("\(index + 1)").font(.caption.bold()).foregroundStyle(.secondary)
+        case "review": Image(systemName: "hand.raised.fill").textStyle(Typography.caption).foregroundStyle(Palette.warning)
+        default: Text("\(index + 1)").textStyle(Typography.captionStrong).foregroundStyle(Palette.textSecondary)
         }
     }
 }
@@ -160,15 +163,15 @@ struct TimingCard: View {
         if let timing = data.timing, timing["completedMs"]?.number != nil || timing["totalMs"]?.number != nil || !timing["runs"].items.isEmpty {
             let runs = Array(timing["runs"].items.reversed().prefix(10))
             SettingsGroup(title: "用时", trailing: AnyView(
-                Text("\(timing["completedMs"]?.number.map { "完成 \(formatDuration($0)) · " } ?? "")累计 \(formatDurationUI(timing["totalMs"]?.number))").foregroundStyle(.secondary)
+                Text("\(timing["completedMs"]?.number.map { "完成 \(formatDuration($0)) · " } ?? "")累计 \(formatDurationUI(timing["totalMs"]?.number))").textStyle(Typography.body.number).foregroundStyle(Palette.textSecondary)
             )) {
                 if !runs.isEmpty {
-                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
+                Grid(alignment: .leading, horizontalSpacing: Spacing.md, verticalSpacing: Spacing.sm) {
                     GridRow {
                         Text("开始"); Text("原因"); Text("结果"); Text("用时"); Text("各步骤")
                     }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .textStyle(Typography.captionStrong)
+                    .foregroundStyle(Palette.textSecondary)
                     ForEach(Array(runs.enumerated()), id: \.offset) { _, run in
                         GridRow {
                             Text(formatTime(run["startedAt"]?.string)).monospacedDigit()
@@ -176,12 +179,12 @@ struct TimingCard: View {
                             Text(["done": "完成", "waiting": "待确认", "failed": "失败", "canceled": "已停止", "idle": "未完"][run["status"]?.string ?? ""] ?? run["status"].text)
                             Text(formatDurationUI(run["ms"]?.number)).monospacedDigit()
                             Text(STEP_ORDER.filter { (run["steps"]?[$0]?.number ?? 0) >= 1000 }.map { "\(UI_STEP_LABELS[$0] ?? $0) \(formatDuration(run["steps"]?[$0]?.number ?? 0))" }.joined(separator: " · ").ifEmpty("—"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .textStyle(Typography.caption)
+                                .foregroundStyle(Palette.textSecondary)
                         }
                     }
                 }
-                .font(.callout)
+                .textStyle(Typography.body)
                 .padding(Spacing.lg)
                 }
             }
@@ -195,16 +198,16 @@ struct LogCard: View {
     var body: some View {
         SettingsGroup(title: "日志") {
             if log.isEmpty {
-                Text("还没有日志").foregroundStyle(.secondary).padding(Spacing.lg)
+                Text("还没有日志").foregroundStyle(Palette.textSecondary).padding(Spacing.lg)
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: Spacing.xs) {
                         ForEach(Array(log.reversed().enumerated()), id: \.offset) { _, entry in
                             HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
-                                Text(formatTime(entry["at"]?.string)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                Text(formatTime(entry["at"]?.string)).textStyle(Typography.caption.number).foregroundStyle(Palette.textSecondary)
                                 Text(entry["message"]?.jsString ?? "")
-                                    .font(.callout)
-                                    .foregroundStyle(entry["level"]?.string == "error" ? Color.red : entry["level"]?.string == "warn" ? Color.orange : Color.primary)
+                                    .textStyle(Typography.body)
+                                    .foregroundStyle(entry["level"]?.string == "error" ? Palette.danger : entry["level"]?.string == "warn" ? Palette.warning : Palette.text)
                                     .textSelection(.enabled)
                             }
                         }
