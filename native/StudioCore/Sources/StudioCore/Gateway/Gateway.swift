@@ -183,52 +183,69 @@ public actor ImageGateway {
     public func resumePending() async -> [String] {
         guard let settings = try? await getSettings() else { return [] }
         var resumed: [String] = []
-        for (job, attempt) in ledger.remoteWaiting() {
-            guard let provider = settings.providers.first(where: { $0.id == attempt["providerId"]?.string }) else { continue }
+        for (job, attempt) in ledger.remoteWaitingTyped() {
+            guard let provider = settings.providers.first(where: { $0.id == attempt.providerId }) else { continue }
             let apiKey = await secrets.get(SecretIds.imageProvider(provider.id))
             if apiKey.isEmpty { continue }
-            let jobId = job["jobId"]?.string ?? ""
-            let attemptId = attempt["attemptId"]?.string ?? ""
-            let taskId = attempt["taskId"]?.string ?? ""
+            let jobId = job.jobId ?? ""
+            let attemptId = attempt.attemptId ?? ""
+            let taskId = attempt.taskId ?? ""
             let startedAt = now()
             let work = Task<Void, Never> { [ledger, callLog, http, checkImage, onEvent] in
                 do {
-                    let result = try await runAttempt(provider: provider, apiKey: apiKey, prompt: job["prompt"]?.string ?? "", resumeTaskId: taskId, http: http)
+                    let result = try await runAttempt(provider: provider, apiKey: apiKey, prompt: job.prompt ?? "", resumeTaskId: taskId, http: http)
                     let check = checkImage(result.bytes)
                     guard check.ok, let png = check.png else { throw ProviderError(check.reason ?? "图片无效", kind: "invalid-image") }
-                    let latest = ledger.get(jobId)
+                    let latest = ledger.getTyped(jobId)
                     var outcome = "alternate"
                     var file: String
-                    let state = latest?["state"]?.string
+                    let state = latest?.state
                     if state == "running" || state == "interrupted" {
-                        try self.installFile(job["outputPath"]?.string ?? "", png, job["archiveRoot"]?.string ?? "")
-                        await ledger.finishJob(jobId, .obj(["state": "done", "winnerAttemptId": .string(attemptId), "providerId": .string(provider.id)]))
+                        try self.installFile(job.outputPath ?? "", png, job.archiveRoot ?? "")
+                        var jobDone = ImageJob(.emptyObject)
+                        jobDone.state = "done"
+                        jobDone.winnerAttemptId = attemptId
+                        jobDone.providerId = provider.id
+                        await ledger.finishJob(jobId, jobDone)
                         outcome = "winner"
-                        file = job["outputPath"]?.string ?? ""
+                        file = job.outputPath ?? ""
                     } else {
-                        file = try self.saveAlternate(alternatesDir: job["alternatesDir"]?.string ?? "", screenId: job["screenId"]?.string ?? "", providerId: provider.id, png: png)
+                        file = try self.saveAlternate(alternatesDir: job.alternatesDir ?? "", screenId: job.screenId ?? "", providerId: provider.id, png: png)
                     }
-                    await ledger.finishAttempt(jobId, attemptId, .obj(["state": "completed", "outcome": .string(outcome), "resumed": true]))
+                    var attemptDone = ImageAttempt(.emptyObject)
+                    attemptDone.state = "completed"
+                    attemptDone.outcome = outcome
+                    attemptDone.resumed = true
+                    await ledger.finishAttempt(jobId, attemptId, attemptDone)
                     await callLog.append(.obj([
-                        "jobId": .string(jobId), "projectDir": job["projectDir"], "screenId": job["screenId"], "providerId": .string(provider.id),
+                        "jobId": .string(jobId), "projectDir": job.projectDir.map(JSON.string), "screenId": job.screenId.map(JSON.string), "providerId": .string(provider.id),
                         "providerName": .string(provider.name), "model": .string(provider.model), "role": "resume", "ok": true, "kind": "success",
                         "outcome": .string(outcome), "durationMs": .number(self.now() - startedAt), "taskId": .string(taskId),
                     ]))
-                    onEvent(.obj(["type": .string(outcome == "winner" ? "job-recovered" : "alternate"), "jobId": .string(jobId), "projectDir": job["projectDir"], "screenId": job["screenId"], "file": .string(file), "providerId": .string(provider.id)]))
+                    onEvent(.obj(["type": .string(outcome == "winner" ? "job-recovered" : "alternate"), "jobId": .string(jobId), "projectDir": job.projectDir.map(JSON.string), "screenId": job.screenId.map(JSON.string), "file": .string(file), "providerId": .string(provider.id)]))
                 } catch {
-                    await ledger.finishAttempt(jobId, attemptId, .obj(["state": "failed", "error": .string(messageOf(error)), "resumed": true]))
-                    let state = ledger.get(jobId)?["state"]?.string
-                    if state == "running" || state == "interrupted" { await ledger.finishJob(jobId, .obj(["state": "failed", "error": .string(messageOf(error))])) }
+                    var attemptFailed = ImageAttempt(.emptyObject)
+                    attemptFailed.state = "failed"
+                    attemptFailed.error = messageOf(error)
+                    attemptFailed.resumed = true
+                    await ledger.finishAttempt(jobId, attemptId, attemptFailed)
+                    let state = ledger.getTyped(jobId)?.state
+                    if state == "running" || state == "interrupted" {
+                        var jobFailed = ImageJob(.emptyObject)
+                        jobFailed.state = "failed"
+                        jobFailed.error = messageOf(error)
+                        await ledger.finishJob(jobId, jobFailed)
+                    }
                 }
             }
-            let key = "\(job["projectDir"]?.string ?? "")::\(job["screenId"]?.string ?? "")"
+            let key = "\(job.projectDir ?? "")::\(job.screenId ?? "")"
             if inflightByScreen[key] == nil {
-                let requestSize = attempt["requestSize"]?.string
+                let requestSize = attempt.requestSize
                 let tracked = Task<GenerateResult, Error> { [ledger] in
                     await work.value
-                    let latest = ledger.get(jobId)
-                    let ok = latest?["state"]?.string == "done" && latest?["winnerAttemptId"]?.string == attemptId
-                    return GenerateResult(jobId: jobId, outputPath: job["outputPath"]?.string ?? "", providerId: provider.id, providerName: provider.name, model: provider.model, requestSize: requestSize, width: nil, height: nil, durationMs: self.now() - startedAt, hedged: false, attempts: 1, warnings: [], resumed: true, ok: ok)
+                    let latest = ledger.getTyped(jobId)
+                    let ok = latest?.state == "done" && latest?.winnerAttemptId == attemptId
+                    return GenerateResult(jobId: jobId, outputPath: job.outputPath ?? "", providerId: provider.id, providerName: provider.name, model: provider.model, requestSize: requestSize, width: nil, height: nil, durationMs: self.now() - startedAt, hedged: false, attempts: 1, warnings: [], resumed: true, ok: ok)
                 }
                 inflightByScreen[key] = tracked
                 Task { _ = try? await tracked.value; self.clearInflight(key, tracked) }
@@ -380,11 +397,16 @@ actor GatewayJob {
         secretValues = await gateway.secretList()
         jobId = "\(Path.basename(request.projectDir)):\(request.screenId):\(randomHex(4))"
         startedAt = gateway.now()
-        await gateway.ledger.createJob(.obj([
-            "jobId": .string(jobId), "projectDir": .string(request.projectDir), "screenId": .string(request.screenId),
-            "outputPath": .string(request.outputPath), "alternatesDir": .string(request.alternatesDir), "archiveRoot": .string(request.archiveRoot),
-            "prompt": .string(request.prompt), "batchId": JSON.orNull(request.batchId),
-        ]))
+        var newJob = ImageJob(.emptyObject)
+        newJob.jobId = jobId
+        newJob.projectDir = request.projectDir
+        newJob.screenId = request.screenId
+        newJob.outputPath = request.outputPath
+        newJob.alternatesDir = request.alternatesDir
+        newJob.archiveRoot = request.archiveRoot
+        newJob.prompt = request.prompt
+        if let batchId = request.batchId { newJob.batchId = batchId } else { newJob.raw["batchId"] = .null }
+        await gateway.ledger.createJob(newJob)
     }
 
     func run() async throws -> GenerateResult {
@@ -433,7 +455,9 @@ actor GatewayJob {
             attempt.abortReason = "canceled"
             attempt.abort()
         }
-        await gateway.ledger.finishJob(jobId, .obj(["state": "canceled"]))
+        var patch = ImageJob(.emptyObject)
+        patch.state = "canceled"
+        await gateway.ledger.finishJob(jobId, patch)
         finish(.failure(ProviderError("已取消", kind: "aborted")))
     }
 
@@ -448,7 +472,10 @@ actor GatewayJob {
         let unavailable = unavailableSummary()
         let message = ([extraMessage] + lines + (unavailable.isEmpty ? [] : ["不可用的线路："] + unavailable)).filter { !$0.isEmpty }.joined(separator: "\n")
         Task {
-            await gateway.ledger.finishJob(jobId, .obj(["state": "failed", "error": .string(message)]))
+            var patch = ImageJob(.emptyObject)
+            patch.state = "failed"
+            patch.error = message
+            await gateway.ledger.finishJob(jobId, patch)
             emit(.obj(["type": "job-failed", "message": .string(message)]))
             finish(.failure(GenerateFailure(message: message.isEmpty ? "生图失败" : message)))
         }
@@ -499,16 +526,22 @@ actor GatewayJob {
         attempt.startedAt = gateway.now()
         let sizeSpec = sizeOverrides[provider.id] ?? resolveRequestSize(provider, imageSettings.targetSize)
         attempt.sizeSpec = sizeSpec
-        await gateway.ledger.startAttempt(jobId, .obj([
-            "attemptId": .string(attempt.attemptId), "providerId": .string(provider.id), "model": .string(provider.model),
-            "role": .string(attempt.role), "requestSize": .string(sizeSpec.size),
-        ]))
+        var startedAttempt = ImageAttempt(.emptyObject)
+        startedAttempt.attemptId = attempt.attemptId
+        startedAttempt.providerId = provider.id
+        startedAttempt.model = provider.model
+        startedAttempt.role = attempt.role
+        startedAttempt.requestSize = sizeSpec.size
+        await gateway.ledger.startAttempt(jobId, startedAttempt)
         emit(.obj(["type": "attempt-start", "providerId": .string(provider.id), "providerName": .string(provider.name), "role": .string(attempt.role), "requestSize": .string(sizeSpec.size)]))
         let apiKey = await gateway.secrets.get(SecretIds.imageProvider(provider.id))
         if settled {
             releaseSlots(attempt)
             removeActive(attempt)
-            await gateway.ledger.finishAttempt(jobId, attempt.attemptId, .obj(["state": "aborted", "outcome": "not-needed"]))
+            var aborted = ImageAttempt(.emptyObject)
+            aborted.state = "aborted"
+            aborted.outcome = "not-needed"
+            await gateway.ledger.finishAttempt(jobId, attempt.attemptId, aborted)
             return
         }
         if apiKey.isEmpty {
@@ -606,8 +639,15 @@ actor GatewayJob {
                 return
             }
             await logCall(attempt, .obj(["ok": true, "kind": "success", "outcome": "winner", "width": JSON.maybe(check.width), "height": JSON.maybe(check.height), "hedged": .bool(hedged)]))
-            await gateway.ledger.finishAttempt(jobId, attempt.attemptId, .obj(["state": "completed", "outcome": "winner"]))
-            await gateway.ledger.finishJob(jobId, .obj(["state": "done", "winnerAttemptId": .string(attempt.attemptId), "providerId": .string(attempt.provider.id)]))
+            var attemptWin = ImageAttempt(.emptyObject)
+            attemptWin.state = "completed"
+            attemptWin.outcome = "winner"
+            await gateway.ledger.finishAttempt(jobId, attempt.attemptId, attemptWin)
+            var jobWin = ImageJob(.emptyObject)
+            jobWin.state = "done"
+            jobWin.winnerAttemptId = attempt.attemptId
+            jobWin.providerId = attempt.provider.id
+            await gateway.ledger.finishJob(jobId, jobWin)
             for id in activeOrder {
                 guard let other = active[id] else { continue }
                 if isAsyncProvider(other.provider), other.taskId != nil {
@@ -630,7 +670,11 @@ actor GatewayJob {
             do {
                 let file = try gateway.saveAlternate(alternatesDir: request.alternatesDir, screenId: request.screenId, providerId: attempt.provider.id, png: png)
                 await logCall(attempt, .obj(["ok": true, "kind": "success", "outcome": "alternate", "width": JSON.maybe(check.width), "height": JSON.maybe(check.height)]))
-                await gateway.ledger.finishAttempt(jobId, attempt.attemptId, .obj(["state": "completed", "outcome": "alternate", "alternatePath": .string(file)]))
+                var alt = ImageAttempt(.emptyObject)
+                alt.state = "completed"
+                alt.outcome = "alternate"
+                alt.alternatePath = file
+                await gateway.ledger.finishAttempt(jobId, attempt.attemptId, alt)
                 emit(.obj(["type": "alternate", "providerId": .string(attempt.provider.id), "providerName": .string(attempt.provider.name), "file": .string(file)]))
             } catch {}
         }
@@ -656,12 +700,19 @@ actor GatewayJob {
         if error.kind == "aborted" {
             let outcome = attempt.abortReason ?? "canceled"
             if attempt.startedAt != nil { await logCall(attempt, .obj(["ok": false, "kind": "aborted", "outcome": .string(outcome), "errorMessage": "已取消"])) }
-            await gateway.ledger.finishAttempt(jobId, attempt.attemptId, .obj(["state": "aborted", "outcome": .string(outcome)]))
+            var aborted = ImageAttempt(.emptyObject)
+            aborted.state = "aborted"
+            aborted.outcome = outcome
+            await gateway.ledger.finishAttempt(jobId, attempt.attemptId, aborted)
             if !settled, attempt.abortReason != "loser" { failover() }
             return
         }
         await logCall(attempt, .obj(["ok": false, "kind": .string(error.kind), "httpStatus": JSON.maybe(error.status), "errorMessage": .string(message)]))
-        await gateway.ledger.finishAttempt(jobId, attempt.attemptId, .obj(["state": "failed", "error": .string(message), "kind": .string(error.kind)]))
+        var failed = ImageAttempt(.emptyObject)
+        failed.state = "failed"
+        failed.error = message
+        failed.kind = error.kind
+        await gateway.ledger.finishAttempt(jobId, attempt.attemptId, failed)
         if !["content", "size", "pending"].contains(error.kind) {
             await gateway.health.recordFailure(attempt.provider.id, kind: error.kind, message: message, retryAfterSec: error.retryAfterSec)
         }
