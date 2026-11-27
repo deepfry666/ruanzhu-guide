@@ -81,7 +81,7 @@ public func ensureBrandBan(_ prompt: String) -> String {
 }
 
 /// 只替换程序管理的规则块，保留用户或反馈模型追加的其他指令。
-public func ensureContentDateRule(_ prompt: String, _ state: JSON) -> String {
+public func ensureContentDateRule(_ prompt: String, _ state: ProjectState) -> String {
     let start = "<manual-content-policy>"
     let end = "</manual-content-policy>"
     var clean = prompt
@@ -94,8 +94,12 @@ public func ensureContentDateRule(_ prompt: String, _ state: JSON) -> String {
         clean.removeSubrange(from.lowerBound..<to.lowerBound)
     }
     // 红线只加在 1.6.0 起新建的项目上：旧项目的提示词不变，不会因此把截图全部重生
-    let redLine = (state["request"]?["policyVersion"]?.int ?? 0) >= 2 ? "\n" + RED_LINE_IMAGE_RULE : ""
-    let rule = start + "\n" + [imageDateRule(state), platformNeutralImageRule(state["request"]?["softwareName"].text ?? "")].filter { !$0.isEmpty }.joined(separator: "\n") + redLine + "\n" + end
+    let redLine = (state.request?.policyVersion ?? 0) >= 2 ? "\n" + RED_LINE_IMAGE_RULE : ""
+    let rule = start + "\n" + [imageDateRule(state), platformNeutralImageRule(state.request?.softwareName ?? "")].filter { !$0.isEmpty }.joined(separator: "\n") + redLine + "\n" + end
     let withoutBan = clean.replacingAll(BRAND_BAN_BLOCK, with: "").jsTrimmed
     return ensureBrandBan(withoutBan + "\n\n" + rule)
+}
+
+public func ensureContentDateRule(_ prompt: String, _ state: JSON) -> String {
+    ensureContentDateRule(prompt, ProjectState(state))
 }

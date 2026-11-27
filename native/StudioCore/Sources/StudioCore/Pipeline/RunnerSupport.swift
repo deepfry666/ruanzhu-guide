@@ -49,21 +49,25 @@ public func formatDuration(_ ms: Double?) -> String {
 /// 这个项目生成代码文档用哪个代码来源。
 /// 代码来源在总设置里设；项目第一次生成交付包时记下当时用的来源（锁定），以后改总设置不影响已完成的项目。
 /// 本软件做过交付包的项目、导入的历史项目，都视为已锁定。
-public func codeSourceFor(_ state: JSON, _ settings: Settings) -> (source: JSON?, locked: Bool) {
-    let request = state["request"]
+public func codeSourceFor(_ state: ProjectState, _ settings: Settings) -> (source: JSON?, locked: Bool) {
+    let request = state.request
     let locked: Bool
-    if let explicit = request?["codeSourceLocked"], !explicit.isNull {
-        locked = explicit.truthy
+    if let explicit = request?.codeSourceLocked {
+        locked = explicit
     } else {
-        locked = state["lastBuild"].isTruthy || state["origin"]?.string == "imported"
+        locked = (state.lastBuild?.raw.truthy ?? false) || state.origin == "imported"
     }
     if locked {
-        let source = request?["codeSource"]
+        let source = request?.codeSource
         return (source?["path"].isTruthy == true ? source : nil, true)
     }
     let global = settings.codeSource
     guard !global.path.isEmpty else { return (nil, false) }
     return (.obj(["path": .string(global.path), "extensions": JSON(global.extensions.isEmpty ? [".java"] : global.extensions)]), false)
+}
+
+public func codeSourceFor(_ state: JSON, _ settings: Settings) -> (source: JSON?, locked: Bool) {
+    codeSourceFor(ProjectState(state), settings)
 }
 
 /// 软件名里有没有版本号（V1.0、1.0.0 这类）。
@@ -135,7 +139,7 @@ public struct RunResult: Sendable, Hashable {
 
 struct StepContext: Sendable {
     let projectDir: String
-    var state: JSON
+    var state: ProjectState
     let settings: Settings
     let batchId: String
     let reviewPlan: Bool
@@ -148,7 +152,7 @@ struct StepContext: Sendable {
 }
 
 struct StepOutcome: Sendable {
-    var status: String
+    var status: StepStatus
     var message: String?
     var screenCountReason: String?
 }
@@ -171,10 +175,12 @@ public func validContentDate(_ value: String) -> Bool {
     return formatter.string(from: date) == value
 }
 
-public func contentDateOf(_ state: JSON) -> String {
-    let value = state["request"]?["contentDate"].text ?? ""
+public func contentDateOf(_ state: ProjectState) -> String {
+    let value = state.request?.contentDate ?? ""
     return validContentDate(value) ? value : localDateKey()
 }
+
+public func contentDateOf(_ state: JSON) -> String { contentDateOf(ProjectState(state)) }
 
 public func contentDateChinese(_ value: String) -> String {
     let parts = value.split(separator: "-").compactMap { Int($0) }

@@ -173,59 +173,75 @@ public final class Pipeline: @unchecked Sendable {
     // MARK: - 状态
 
     @discardableResult
-    func update(_ dir: String, _ mutate: @escaping @Sendable (inout JSON) throws -> Void) async throws -> JSON {
-        let state = try await projectStore.update(dir, mutate)
-        emit(.obj(["type": "project", "projectDir": .string(dir), "status": state["status"] ?? .null, "steps": state["steps"] ?? .null]))
+    func updateState(_ dir: String, _ mutate: @escaping @Sendable (inout ProjectState) throws -> Void) async throws -> ProjectState {
+        let state = try await projectStore.updateTyped(dir, mutate)
+        emit(.obj(["type": "project", "projectDir": .string(dir), "status": state.status.map { .string($0.rawValue) } ?? .null, "steps": state.steps ?? .null]))
         return state
+    }
+
+    @discardableResult
+    func update(_ dir: String, _ mutate: @escaping @Sendable (inout JSON) throws -> Void) async throws -> JSON {
+        try await updateState(dir) { try mutate(&$0.raw) }.raw
     }
 
     func log(_ dir: String, _ message: String, _ level: String = "info") async throws {
-        try await update(dir) { appendLog(&$0, message, level) }
+        try await updateState(dir) { appendLog(&$0, message, level) }
         emit(.obj(["type": "log", "projectDir": .string(dir), "message": .string(message), "level": .string(level)]))
     }
 
-    func readState(_ dir: String) throws -> JSON {
-        guard let state = try projectStore.read(dir) else { throw StudioError("项目状态不存在：\(dir)") }
+    func readTypedState(_ dir: String) throws -> ProjectState {
+        guard let state = try projectStore.readTyped(dir) else { throw StudioError("项目状态不存在：\(dir)") }
         return state
     }
 
-    func platformOf(_ state: JSON, _ settings: Settings) -> String {
-        let platform = state["request"]?["platform"].text ?? ""
+    func readState(_ dir: String) throws -> JSON {
+        try readTypedState(dir).raw
+    }
+
+    func platformOf(_ state: ProjectState, _ settings: Settings) -> String {
+        let platform = state.request?.platform ?? ""
         return platform.isEmpty ? settings.pipeline.platform : platform
     }
 
-    func softwareName(_ state: JSON) -> String { state["request"]?["softwareName"]?.jsString ?? "" }
+    func softwareName(_ state: ProjectState) -> String { state.request?.softwareName ?? "" }
+    func softwareName(_ state: JSON) -> String { softwareName(ProjectState(state)) }
 
     /// 截图验收结果在这些条件不变时才有效：禁词，以及设置了内容日期的项目的日期规则。
-    func gateKey(_ state: JSON) -> String {
+    func gateKey(_ state: ProjectState) -> String {
         let tokens = JSON(forbiddenBrandTokens(softwareName(state), extraTokens(state)))
         guard let dates = datePolicyFields(state) else { return hashObject(tokens) }
         return hashObject(.obj(["tokens": tokens, "dates": dates]))
     }
 
-    func extraTokens(_ state: JSON) -> [String] { state["request"]?["extraBrandTokens"].items.map(\.jsString) ?? [] }
+    func extraTokens(_ state: ProjectState) -> [String] { state.request?.extraBrandTokens.items.map(\.jsString) ?? [] }
 
     // MARK: - S1 规划
 
     func stepPlan(_ ctx: StepContext) async throws -> StepOutcome {
         let dir = ctx.projectDir
-        let request = ctx.state["request"] ?? .emptyObject
+        let request = ctx.state.request
         let settings = ctx.settings
         let platform = platformOf(ctx.state, settings)
-        let screenCount = request["screenCount"].truthyValue?.int
+        let screenCount = request?.screenCount.flatMap { $0 != 0 ? $0 : nil }
         let name = softwareName(ctx.state)
         // 没设过内容日期的老项目：这次重新规划起按今天算，记下来以后固定
         var planState = ctx.state
         if !dateRuleActive(planState) {
             let today = localDateKey()
-            planState = try await update(dir) { draft in draft["request"]?["contentDate"] = .string(today) }
+            planState = try await updateState(dir) { draft in
+                var req = draft.request ?? ProjectRequest(.emptyObject)
+                req.contentDate = today
+                draft.request = req
+            }
         }
         let appClass = await appProfile(dir, planState)
-        let nameText = [name, request["emphasis"].text, request["notes"].text].joined(separator: " ")
+        let emphasis = request?.emphasis ?? ""
+        let notes = request?.notes ?? ""
+        let nameText = [name, emphasis, notes].joined(separator: " ")
         try await log(dir, "正在让大模型规划界面…")
         var plan = try await callLlm("plan", dir, ChatJsonRequest(
             system: PLAN_SYSTEM_V3,
-            user: planUserPromptV3(softwareName: name, screenCount: screenCount, emphasis: request["emphasis"].text, notes: request["notes"].text, platform: platform, profile: appClass)
+            user: planUserPromptV3(softwareName: name, screenCount: screenCount, emphasis: emphasis, notes: notes, platform: platform, profile: appClass)
                 + platformNeutralRule(name, forPlan: true) + planDateRule(planState, appClass) + planRealDataRule(appClass, text: nameText) + planSceneRule(appClass, text: nameText) + RED_LINE_RULE,
             schema: PLAN_SCHEMA_V3,
             check: { planCheck($0, softwareName: name, screenCount: screenCount) + platformProblems(name, "规划的用户、流程或界面文字", planVisibleTexts($0)) },
@@ -244,7 +260,7 @@ public final class Pipeline: @unchecked Sendable {
         let screens = plan["screens"].items
         let profile = plan["profile"] ?? .emptyObject
         try FS.writeJSONAtomic(paths.profile, .obj([
-            "softwareName": .string(name), "versionPolicy": request["versionPolicy"], "domain": profile["domain"], "platform": .string(platform),
+            "softwareName": .string(name), "versionPolicy": request?.versionPolicy.map(JSON.string), "domain": profile["domain"], "platform": .string(platform),
             "targetUser": profile["targetUser"], "coreFlow": profile["coreFlow"],
             "screenshotPolicy": "UI 内严禁出现软件名称、App 名称、版本号、名称型 logo 或 wordmark",
         ]))
@@ -275,14 +291,17 @@ public final class Pipeline: @unchecked Sendable {
         uiContract["forbiddenVisibleBranding"] = JSON(tokens + ["App name", "name-bearing logo", "wordmark"])
         try FS.writeJSONAtomic(paths.uiContract, .object(uiContract))
         // 重新规划后界面都变了：人工改过的提示词和说明不再对应，清掉标记让它们按新规划重写
-        try await update(dir) { draft in
-            for (id, screen) in draft["screens"].fields {
-                draft["screens"]?[id] = screen.merging(["promptEdited": false, "textEdited": false])
+        try await updateState(dir) { draft in
+            for id in draft.screens.fields.keys {
+                var screen = draft[screen: id] ?? ScreenState(.emptyObject)
+                screen.promptEdited = false
+                screen.textEdited = false
+                draft[screen: id] = screen
             }
-            draft["overviewEdited"] = false
+            draft.overviewEdited = false
         }
         try await log(dir, "规划完成：\(screens.count) 屏（\(jsJoin(screens.map { $0["title"] ?? .null }, "、"))）")
-        return StepOutcome(status: ctx.reviewPlan ? "review" : "done", screenCountReason: plan["coverageReason"]?.jsString)
+        return StepOutcome(status: ctx.reviewPlan ? .review : .done, screenCountReason: plan["coverageReason"]?.jsString)
     }
 
     // MARK: - S2 提示词
@@ -297,52 +316,65 @@ public final class Pipeline: @unchecked Sendable {
         let platform = platformOf(state, settings)
         let ui = normalizedUi(plan)
         let name = softwareName(state)
-        var screenStates = JSONObject()
+        struct PromptPatch: Sendable {
+            let rowHash: String
+            let promptHash: String
+            let promptEdited: Bool?
+        }
+        var screenStates: [String: PromptPatch] = [:]
+        var screenOrder: [String] = []
         for screen in plan["screens"].items {
             let id = screen["id"]?.jsString ?? ""
             let rowHash = planRowHash(screen, ui, platform, settings.image.targetSize)
-            let previous = state["screens"]?[id] ?? .emptyObject
+            let previous = state[screen: id]
             let file = paths.promptFile(id)
             // JS 的 `a && b && c`：promptEdited 没设置时保持「没有这个字段」
-            var keepValue: JSON?
-            if let edited = previous["promptEdited"] {
-                keepValue = edited.truthy ? .bool(previous["planRowHash"]?.string == rowHash && FS.exists(file)) : edited
+            var keepValue: Bool?
+            if let edited = previous?.promptEdited {
+                keepValue = edited ? (previous?.planRowHash == rowHash && FS.exists(file)) : false
             }
-            let keep = keepValue.isTruthy
+            let keep = keepValue == true
             var prompt: String
             var promptHash: String
             if keep {
                 // 人工改过或历史项目的提示词：原样保留，只把旧软件名换成新名字。
                 // 内容没变时沿用原来的哈希，不会因此重新生图。
                 let current = try FS.readText(file)
-                let oldName = state["promptsName"]?.string ?? ""
+                let oldName = state.promptsName ?? ""
                 prompt = !oldName.isEmpty && oldName != name ? current.replacingAll(oldName, with: name) : current
-                promptHash = prompt == current && previous["promptHash"].isTruthy ? previous["promptHash"]!.jsString : promptIdentity(prompt, name)
+                if prompt == current, let prevHash = previous?.promptHash, !prevHash.isEmpty {
+                    promptHash = prevHash
+                } else {
+                    promptHash = promptIdentity(prompt, name)
+                }
             } else {
                 prompt = composeScreenPrompt(softwareName: name, platform: platform, targetSize: settings.image.targetSize, ui: ui, screen: screen)
                 promptHash = promptIdentity(prompt, name)
             }
             // 历史项目改名和无改动续跑保留旧截图；新项目或主动设置日期后应用规则。
-            if state["request"]?["contentDate"].isTruthy == true {
+            if let contentDate = state.request?.contentDate, !contentDate.isEmpty {
                 prompt = ensureContentDateRule(prompt, state)
                 promptHash = promptIdentity(prompt, name)
             }
             if FS.readTextIfExists(file) != prompt { try FS.writeAtomic(file, prompt) }
-            screenStates[id] = .obj(["planRowHash": .string(rowHash), "promptHash": .string(promptHash), "promptEdited": keepValue])
+            if screenStates[id] == nil { screenOrder.append(id) }
+            screenStates[id] = PromptPatch(rowHash: rowHash, promptHash: promptHash, promptEdited: keepValue)
         }
         let patches = screenStates
-        try await update(dir) { draft in
-            var screens = draft["screens"].fields
-            for (id, patch) in patches {
-                var merged = (screens[id] ?? .emptyObject).merging(patch)
-                if patch["promptEdited"] == nil { merged["promptEdited"] = nil }
-                screens[id] = merged
+        let order = screenOrder
+        try await updateState(dir) { draft in
+            for id in order {
+                guard let patch = patches[id] else { continue }
+                var shot = draft[screen: id] ?? ScreenState(.emptyObject)
+                shot.planRowHash = patch.rowHash
+                shot.promptHash = patch.promptHash
+                shot.promptEdited = patch.promptEdited
+                draft[screen: id] = shot
             }
-            for id in screens.keys where patches[id] == nil { screens[id] = nil }
-            draft["screens"] = .object(screens)
-            draft["promptsName"] = draft["request"]?["softwareName"]
+            for id in draft.screens.fields.keys where patches[id] == nil { draft[screen: id] = nil }
+            draft.promptsName = draft.request?.softwareName
         }
-        return StepOutcome(status: "done")
+        return StepOutcome(status: .done)
     }
 
     /// retryHint：只用于这一次生成的补充要求（例如上一张验收没过的原因），不写进提示词文件。
@@ -365,8 +397,15 @@ public final class Pipeline: @unchecked Sendable {
             prompt = composeScreenPrompt(softwareName: name, platform: platform, targetSize: settings.image.targetSize, ui: ui, screen: screen)
             try FS.mkdirp(paths.prompts)
             try FS.writeAtomic(paths.promptFile(id), prompt)
-            let patch: JSON = ["promptHash": .string(promptIdentity(prompt, name)), "planRowHash": .string(planRowHash(screen, ui, platform, settings.image.targetSize)), "promptEdited": false]
-            try await update(dir) { draft in draft.mergeChild("screens", id, patch) }
+            let pHash = promptIdentity(prompt, name)
+            let rHash = planRowHash(screen, ui, platform, settings.image.targetSize)
+            try await updateState(dir) { draft in
+                var shot = draft[screen: id] ?? ScreenState(.emptyObject)
+                shot.promptHash = pHash
+                shot.planRowHash = rHash
+                shot.promptEdited = false
+                draft[screen: id] = shot
+            }
         }
         if dateRuleActive(state) {
             let ruled = ensureContentDateRule(prompt, state)
@@ -375,7 +414,11 @@ public final class Pipeline: @unchecked Sendable {
                 try FS.writeAtomic(paths.promptFile(id), prompt)
                 // 提示词因日期规则更新：同步记下新哈希，否则下次运行会以为提示词改过，又把这一屏重生一遍
                 let hash = promptIdentity(prompt, name)
-                try await update(dir) { draft in draft.mergeChild("screens", id, ["promptHash": .string(hash)]) }
+                try await updateState(dir) { draft in
+                    var shot = draft[screen: id] ?? ScreenState(.emptyObject)
+                    shot.promptHash = hash
+                    draft[screen: id] = shot
+                }
             }
         }
         let sentPrompt = retryHint.map { ensureBrandBan(prompt.replacingAll(BRAND_BAN_BLOCK, with: "").jsTrimmedEnd + "\n\nThis attempt must fix the previous review result: \($0)") } ?? prompt
@@ -389,16 +432,23 @@ public final class Pipeline: @unchecked Sendable {
         let promptHash = promptIdentity(prompt, name)
         let generatedAt = isoNow()
         let durationSec = Int(jsRound(result.durationMs / 1000))
-        try await update(dir) { draft in
-            let current = draft["screens"]?[id] ?? .emptyObject
-            draft["screens"]?[id] = current.merging(.obj([
-                "imagePromptHash": .string(promptHash), "imageSha": .string(imageSha), "providerId": .string(result.providerId),
-                "providerName": .string(result.providerName), "model": .string(result.model), "requestSize": JSON.maybe(result.requestSize),
-                "width": JSON.maybe(result.width), "height": JSON.maybe(result.height), "hedged": .bool(result.hedged),
-                "imageWarnings": JSON(result.warnings), "generatedAt": .string(generatedAt), "gate": .null,
-                // 截图换了，这一屏的说明要按新截图重写（人工改过的会保留并提醒）
-                "contentStale": true,
-            ]))
+        try await updateState(dir) { draft in
+            var shot = draft[screen: id] ?? ScreenState(.emptyObject)
+            shot.imagePromptHash = promptHash
+            shot.imageSha = imageSha
+            shot.providerId = result.providerId
+            shot.providerName = result.providerName
+            shot.model = result.model
+            if let size = result.requestSize { shot.requestSize = size }
+            if let width = result.width { shot.width = width }
+            if let height = result.height { shot.height = height }
+            shot.hedged = result.hedged
+            shot.imageWarnings = JSON(result.warnings)
+            shot.generatedAt = generatedAt
+            shot.gate = .null
+            // 截图换了，这一屏的说明要按新截图重写（人工改过的会保留并提醒）
+            shot.contentStale = true
+            draft[screen: id] = shot
             appendLog(&draft, "\(id) 已生成（\(result.providerName.isEmpty ? result.providerId : result.providerName)\(result.hedged ? "，触发了超时补发" : "")，\(durationSec) 秒）")
         }
         let promptSha = sha256Hex(prompt)
@@ -421,23 +471,23 @@ public final class Pipeline: @unchecked Sendable {
 
     func stepImages(_ ctx: StepContext) async throws -> StepOutcome {
         let dir = ctx.projectDir
-        let state = try readState(dir)
+        let state = try readTypedState(dir)
         let paths = projectPaths(dir)
         guard let plan = try readPlan(dir) else { throw StudioError("还没有界面规划") }
         var needed: [String] = []
         let planScreens = plan["screens"].items
         for screen in planScreens {
             let id = screen["id"]?.jsString ?? ""
-            let current = state["screens"]?[id] ?? .emptyObject
+            let current = state[screen: id]
             let forced = ctx.forceScreens?.contains(id) ?? false
-            let imagePromptHash = current["imagePromptHash"]
+            let imagePromptHash = current?.imagePromptHash ?? ""
             if forced || !FS.exists(paths.screenFile(id))
-                || (imagePromptHash.isTruthy && imagePromptHash != current["promptHash"])
-                || (!imagePromptHash.isTruthy && state["origin"]?.string != "imported") {
+                || (!imagePromptHash.isEmpty && imagePromptHash != current?.promptHash)
+                || (imagePromptHash.isEmpty && state.origin != "imported") {
                 needed.append(id)
             }
         }
-        if needed.isEmpty { return StepOutcome(status: "done") }
+        if needed.isEmpty { return StepOutcome(status: .done) }
         var screensProgress = JSONObject()
         for screen in planScreens {
             let id = screen["id"]?.jsString ?? ""
@@ -470,7 +520,7 @@ public final class Pipeline: @unchecked Sendable {
             let detail = messages.count == 1 ? "\(failures.map(\.0).joined(separator: "、"))：\(messages[0])" : failures.map { "\($0.0)：\($0.1)" }.joined(separator: "\n")
             throw StudioError("\(failures.count) 张截图没有生成成功\(failures.count < needed.count ? "（其余已保存）" : "")：\n\(detail)")
         }
-        return StepOutcome(status: "done")
+        return StepOutcome(status: .done)
     }
 
     // MARK: - S4 品牌验收
@@ -482,22 +532,26 @@ public final class Pipeline: @unchecked Sendable {
         let id = screen["id"]?.jsString ?? ""
         var round = 0
         while true {
-            let state = try readState(dir)
+            let state = try readTypedState(dir)
             let file = paths.screenFile(id)
             let sha = try sha256File(file)
-            if let current = state["screens"]?[id]?["gate"], current.isObject, current["sha"]?.string == sha, current["tokensHash"]?.string == tokensHash,
+            if let current = state[screen: id]?.gate, current.isObject, current["sha"]?.string == sha, current["tokensHash"]?.string == tokensHash,
                ["passed", "manual-passed"].contains(current["status"]?.string ?? "") {
                 setScreenProgress(dir, id, ["status": "passed"])
                 return current
             }
             if !llmAvailable {
                 let gate: JSON = .obj(["status": "needs-manual", "sha": .string(sha), "tokensHash": .string(tokensHash), "method": "manual", "checkedAt": .string(isoNow()), "reasons": ["没有配置看图模型，请人工确认截图里没有软件名"]])
-                try await update(dir) { draft in draft.mergeChild("screens", id, ["gate": gate]) }
+                try await updateState(dir) { draft in
+                    var shot = draft[screen: id] ?? ScreenState(.emptyObject)
+                    shot.gate = gate
+                    draft[screen: id] = shot
+                }
                 return gate
             }
             setScreenProgress(dir, id, ["status": "checking"])
             let image = try visionImage(file)
-            let requestedChange = state["screens"]?[id]?["requestedChange"]?.string?.jsTrimmed ?? ""
+            let requestedChange = state[screen: id]?.requestedChange?.jsTrimmed ?? ""
             let result = try await callLlm("gate", dir, ChatJsonRequest(
                 system: GATE_SYSTEM,
                 user: gateUserPrompt(softwareName: softwareName(state), tokens: tokens, screen: screen) + gateChangeQuestion(requestedChange) + GATE_RED_LINE_QUESTION,
@@ -534,7 +588,7 @@ public final class Pipeline: @unchecked Sendable {
                 }
             }
             // 交通违法代码：图上出现没确认过的代码就重生
-            let codes = trafficCodeProblems(AppProfile(state["appProfile"]), "截图", result["visibleText"].items.map(\.jsString)).isEmpty ? [] : unknownTrafficCodes(result["visibleText"].items.map(\.jsString))
+            let codes = trafficCodeProblems(AppProfile(state.appProfile), "截图", result["visibleText"].items.map(\.jsString)).isEmpty ? [] : unknownTrafficCodes(result["visibleText"].items.map(\.jsString))
             if !codes.isEmpty {
                 reasons.append("截图里有没确认过的违法代码：\(codes.joined(separator: "、"))")
                 retryHints.append("do not show traffic violation code numbers other than 1625; show only the violation name and its points: \(codes.joined(separator: ", "))")
@@ -560,9 +614,11 @@ public final class Pipeline: @unchecked Sendable {
                 "visibleText": .array(Array(result["visibleText"].items.prefix(80))), "inventory": result["inventory"],
                 "warnings": result["warnings"].or([]), "checkedAt": .string(checkedAt), "rounds": .number(Double(round + 1)),
             ])
-            try await update(dir) { draft in
-                draft.mergeChild("screens", id, ["gate": gate])
-                if passed { draft["screens"]?[id]?["requestedChange"] = nil }
+            try await updateState(dir) { draft in
+                var shot = draft[screen: id] ?? ScreenState(.emptyObject)
+                shot.gate = gate
+                if passed { shot.requestedChange = nil }
+                draft[screen: id] = shot
                 appendLog(&draft, passed ? "\(id) 验收通过" : "\(id) 验收不通过：\(failureReasons.joined(separator: "；"))", passed ? "info" : "warn")
             }
             try await updateRecord(dir) { record in
@@ -582,7 +638,7 @@ public final class Pipeline: @unchecked Sendable {
 
     func stepGate(_ ctx: StepContext) async throws -> StepOutcome {
         let dir = ctx.projectDir
-        let state = try readState(dir)
+        let state = try readTypedState(dir)
         guard let plan = try readPlan(dir) else { throw StudioError("还没有界面规划") }
         let tokens = forbiddenBrandTokens(softwareName(state), extraTokens(state))
         let tokensHash = gateKey(state)
@@ -608,7 +664,7 @@ public final class Pipeline: @unchecked Sendable {
             let detail = failed.map { "\(screens[$0]["id"]?.jsString ?? "")（\(gates[$0]["reasons"].items.map(\.jsString).joined(separator: "；"))）" }.joined(separator: "、")
             throw StudioError("以下截图验收没有通过：\(detail)。可以在截图页重生或换成备选图。")
         }
-        if !manual.isEmpty { return StepOutcome(status: "review", message: "请在截图页逐张确认（\(manual.count) 张），确认界面里没有软件名后继续") }
-        return StepOutcome(status: "done")
+        if !manual.isEmpty { return StepOutcome(status: .review, message: "请在截图页逐张确认（\(manual.count) 张），确认界面里没有软件名后继续") }
+        return StepOutcome(status: .done)
     }
 }

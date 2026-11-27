@@ -27,38 +27,113 @@ public func projectPaths(_ dir: String) -> ProjectPaths { ProjectPaths(dir: dir)
 
 /// 新项目的状态（字段和 Electron 版一致）。
 public func newState(_ request: JSON) -> JSON {
-    var steps = JSONObject()
-    for step in PIPELINE_STEPS { steps[step] = ["status": "pending"] }
-    var fields = JSONObject()
-    fields["softwareName"] = request["softwareName"] ?? ""
-    fields["versionPolicy"] = request["versionPolicy"].or("in-name")
-    fields["applicableVersion"] = .string(request["applicableVersion"].text)
-    fields["screenCount"] = request["screenCount"].or(.null)
-    fields["emphasis"] = .string(request["emphasis"].text)
-    fields["notes"] = .string(request["notes"].text)
-    fields["platform"] = .string(request["platform"].text)
-    fields["wantDesign"] = .bool(request["wantDesign"].isTruthy)
-    fields["codeSource"] = request["codeSource"].or(.null)
+    let req = ProjectRequest(request)
+    var fields = ProjectRequest(.emptyObject)
+    fields.softwareName = req.softwareName ?? request["softwareName"].text
+    fields.versionPolicy = (req.versionPolicy?.isEmpty == false ? req.versionPolicy : nil) ?? "in-name"
+    fields.applicableVersion = req.applicableVersion ?? ""
+    if let count = req.screenCount, count != 0 { fields.screenCount = count } else { fields.raw["screenCount"] = .null }
+    fields.emphasis = req.emphasis ?? ""
+    fields.notes = req.notes ?? ""
+    fields.platform = req.platform ?? ""
+    fields.wantDesign = request["wantDesign"].isTruthy
+    fields.codeSource = req.codeSource.or(.null)
     // 新建时就分好的代码模板记在项目上，之后改设置不影响它
-    if request["codeSourceLocked"].isTruthy { fields["codeSourceLocked"] = true }
+    if req.codeSourceLocked == true { fields.codeSourceLocked = true }
     // 1.6.0 起新建的项目：生图提示词带内容红线
-    if let version = request["policyVersion"] { fields["policyVersion"] = version }
-    fields["txtFields"] = request["txtFields"].or(.null)
-    fields["extraBrandTokens"] = request["extraBrandTokens"].or([])
-    if let date = request["contentDate"] { fields["contentDate"] = date }
-    if let date = request["earliestDate"] { fields["earliestDate"] = date }
-    fields["compileDate"] = .string(request["compileDate"].text)
-    fields["createdAt"] = request["createdAt"].or(.string(isoNow().jsSlice(0, 10)))
-    var state = JSONObject()
-    state["schemaVersion"] = .number(Double(STATE_VERSION))
-    state["request"] = .object(fields)
-    state["status"] = "idle"
-    state["steps"] = .object(steps)
-    state["screens"] = .emptyObject
-    state["warnings"] = []
-    state["log"] = []
-    state["origin"] = request["origin"].or("created")
-    return .object(state)
+    if let version = req.policyVersion { fields.policyVersion = version }
+    fields.txtFields = req.txtFields.or(.null)
+    fields.extraBrandTokens = req.extraBrandTokens.or([])
+    if let date = req.contentDate { fields.contentDate = date }
+    if let date = req.earliestDate { fields.earliestDate = date }
+    fields.compileDate = req.compileDate ?? ""
+    fields.createdAt = (req.createdAt?.isEmpty == false ? req.createdAt : nil) ?? isoNow().jsSlice(0, 10)
+    var state = ProjectState(.emptyObject)
+    state.schemaVersion = STATE_VERSION
+    state.request = fields
+    state.status = .idle
+    state.steps = .emptyObject
+    for step in PIPELINE_STEPS {
+        var stepState = StepState(.emptyObject)
+        stepState.status = .pending
+        state[step: PipelineStepName(rawValue: step)] = stepState
+    }
+    state.screens = .emptyObject
+    state.warnings = []
+    state.log = []
+    state.origin = (request["origin"]?.truthy == true ? request["origin"]?.string : nil) ?? "created"
+    return state.raw
+}
+
+// MARK: - 流水线内部辅助字段与保序 null 写入（不改动 Model/ 外壳定义，通过 raw 保序透传）
+
+extension ProjectState {
+    var bundleRevision: Double? {
+        get { raw["bundleRevision"]?.number }
+        set { raw["bundleRevision"] = newValue.map(JSON.number) }
+    }
+    var bundleUpdateError: String? {
+        get { raw["bundleUpdateError"]?.string }
+        set { raw["bundleUpdateError"] = newValue.map(JSON.string) }
+    }
+    var bundleUpdateNotice: String? {
+        get { raw["bundleUpdateNotice"]?.string }
+        set { raw["bundleUpdateNotice"] = newValue.map(JSON.string) }
+    }
+    var promptsName: String? {
+        get { raw["promptsName"]?.string }
+        set { raw["promptsName"] = newValue.map(JSON.string) }
+    }
+    var overviewEdited: Bool? {
+        get { raw["overviewEdited"]?.bool }
+        set { raw["overviewEdited"] = newValue.map(JSON.bool) }
+    }
+    var designEdited: Bool? {
+        get { raw["designEdited"]?.bool }
+        set { raw["designEdited"] = newValue.map(JSON.bool) }
+    }
+    var contentPlanHash: String? {
+        get { raw["contentPlanHash"]?.string }
+        set { raw["contentPlanHash"] = newValue.map(JSON.string) }
+    }
+    var pdfReexportedAt: String? {
+        get { raw["pdfReexportedAt"]?.string }
+        set { raw["pdfReexportedAt"] = newValue.map(JSON.string) }
+    }
+    var codeTemplateUpdatedAt: String? {
+        get { raw["codeTemplateUpdatedAt"]?.string }
+        set { raw["codeTemplateUpdatedAt"] = newValue.map(JSON.string) }
+    }
+    var imported: JSON? {
+        get { raw["imported"] }
+        set { raw["imported"] = newValue }
+    }
+    mutating func clearLastError() { raw["lastError"] = .null }
+}
+
+extension ProjectRequest {
+    var allowDropCodeDoc: Bool? {
+        get { raw["allowDropCodeDoc"]?.bool }
+        set { raw["allowDropCodeDoc"] = newValue.map(JSON.bool) }
+    }
+}
+
+extension ScreenState {
+    var planRowHash: String? {
+        get { raw["planRowHash"]?.string }
+        set { raw["planRowHash"] = newValue.map(JSON.string) }
+    }
+    mutating func setPromptHashOrNull(_ value: String?) { raw["promptHash"] = JSON.orNull(value) }
+    mutating func setImagePromptHashOrNull(_ value: String?) { raw["imagePromptHash"] = JSON.orNull(value) }
+}
+
+extension StepState {
+    mutating func clearError() { raw["error"] = .null }
+    mutating func clearInputHash() { raw["inputHash"] = .null }
+    mutating func clearMessage() { raw["message"] = .null }
+    static func completed(status: StepStatus, inputHash: String?, finishedAt: String, message: String?) -> StepState {
+        StepState(.obj(["status": .string(status.rawValue), "inputHash": JSON.orNull(inputHash), "finishedAt": .string(finishedAt), "message": JSON.orNull(message)]))
+    }
 }
 
 /// 项目状态文件名：路径的 SHA-1 前 16 位（和 Electron 版一致，导入后能对上）。
@@ -90,37 +165,56 @@ public final class ProjectStore: @unchecked Sendable {
 
     public func stateFile(_ dir: String) -> String { Path.join(dataDir, "projects", "\(projectKey(dir)).json") }
 
-    public func read(_ dir: String) throws -> JSON? {
-        guard var state = try stateCache.read(stateFile(dir))?.raw else { return nil }
-        for step in PIPELINE_STEPS where state["steps"]?[step] == nil {
-            if state["steps"] == nil { state["steps"] = .emptyObject }
-            state["steps"]?[step] = ["status": "pending"]
+    public func readTyped(_ dir: String) throws -> ProjectState? {
+        guard var state = try stateCache.read(stateFile(dir)) else { return nil }
+        for step in PIPELINE_STEPS {
+            let name = PipelineStepName(rawValue: step)
+            if state[step: name] == nil {
+                var pending = StepState(.emptyObject)
+                pending.status = .pending
+                state[step: name] = pending
+            }
         }
-        state["dir"] = .string(dir)
+        state.dir = dir
         return state
+    }
+
+    public func read(_ dir: String) throws -> JSON? {
+        try readTyped(dir)?.raw
     }
 
     public func exists(_ dir: String) -> Bool { FS.exists(stateFile(dir)) }
 
-    public func write(_ dir: String, _ state: JSON) async throws {
+    public func writeTyped(_ dir: String, _ state: ProjectState) async throws {
         let file = stateFile(dir)
         var next = state
-        next["dir"] = .string(dir)
+        next.dir = dir
         let snapshot = next
-        try await queue(dir).run { [self] in try stateCache.write(file, ProjectState(snapshot)) }
+        try await queue(dir).run { [self] in try stateCache.write(file, snapshot) }
+    }
+
+    public func write(_ dir: String, _ state: JSON) async throws {
+        try await writeTyped(dir, ProjectState(state))
     }
 
     /// 读出当前状态 → 修改 → 写回（同一个项目排队执行）。
     @discardableResult
-    public func update(_ dir: String, _ mutate: @escaping @Sendable (inout JSON) throws -> Void) async throws -> JSON {
+    public func updateTyped(_ dir: String, _ mutate: @escaping @Sendable (inout ProjectState) throws -> Void) async throws -> ProjectState {
         let file = stateFile(dir)
         return try await queue(dir).run { [self] in
-            guard var state = try self.read(dir) else { throw StudioError("项目状态不存在：\(dir)") }
+            guard var state = try self.readTyped(dir) else { throw StudioError("项目状态不存在：\(dir)") }
             try mutate(&state)
-            state["dir"] = .string(dir)
-            try stateCache.write(file, ProjectState(state))
+            state.dir = dir
+            try stateCache.write(file, state)
             return state
         }
+    }
+
+    @discardableResult
+    public func update(_ dir: String, _ mutate: @escaping @Sendable (inout JSON) throws -> Void) async throws -> JSON {
+        try await updateTyped(dir) { state in
+            try mutate(&state.raw)
+        }.raw
     }
 
     public func remove(_ dir: String) async {
@@ -130,9 +224,9 @@ public final class ProjectStore: @unchecked Sendable {
 
     /// 项目文件夹改名后，把状态搬到新路径名下。
     public func move(_ fromDir: String, _ toDir: String) throws {
-        guard var state = try read(fromDir) else { return }
-        state["dir"] = .string(toDir)
-        try stateCache.write(stateFile(toDir), ProjectState(state))
+        guard var state = try readTyped(fromDir) else { return }
+        state.dir = toDir
+        try stateCache.write(stateFile(toDir), state)
         stateCache.remove(stateFile(fromDir))
     }
 }
@@ -185,9 +279,15 @@ public func listAlternates(_ dir: String, _ id: String) -> [JSON] {
     return names.map { .obj(["file": .string(Path.join(folder, $0)), "name": .string($0)]) }
 }
 
-public func appendLog(_ state: inout JSON, _ message: String, _ level: String = "info") {
-    var log = state["log"]?.array ?? []
+public func appendLog(_ state: inout ProjectState, _ message: String, _ level: String = "info") {
+    var log = state.log?.array ?? []
     log.append(.obj(["at": .string(isoNow()), "level": .string(level), "message": .string(message)]))
     if log.count > 400 { log.removeFirst(log.count - 400) }
-    state["log"] = .array(log)
+    state.log = .array(log)
+}
+
+public func appendLog(_ state: inout JSON, _ message: String, _ level: String = "info") {
+    var typed = ProjectState(state)
+    appendLog(&typed, message, level)
+    state = typed.raw
 }

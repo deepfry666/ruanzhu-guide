@@ -103,16 +103,18 @@ public func keywordAppProfile(_ text: String) -> AppProfile {
 
 extension Pipeline {
     /// 项目的分档：已经判断过就复用，没有就判断一次并存下来。
-    func appProfile(_ dir: String, _ state: JSON) async -> AppProfile {
-        if let saved = AppProfile(state["appProfile"]) { return saved }
-        let request = state["request"] ?? .emptyObject
+    func appProfile(_ dir: String, _ state: ProjectState) async -> AppProfile {
+        if let saved = AppProfile(state.appProfile) { return saved }
+        let request = state.request
         let name = softwareName(state)
-        let fallbackText = [name, request["emphasis"].text, request["notes"].text].joined(separator: " ")
+        let emphasis = request?.emphasis ?? ""
+        let notes = request?.notes ?? ""
+        let fallbackText = [name, emphasis, notes].joined(separator: " ")
         var profile = keywordAppProfile(fallbackText)
         if await resolveLlm("classify") != nil {
             do {
                 let result = try await callLlm("classify", dir, ChatJsonRequest(
-                    system: CLASSIFY_SYSTEM, user: classifyUserPrompt(softwareName: name, emphasis: request["emphasis"].text, notes: request["notes"].text),
+                    system: CLASSIFY_SYSTEM, user: classifyUserPrompt(softwareName: name, emphasis: emphasis, notes: notes),
                     schema: CLASSIFY_SCHEMA, temperature: 0.1, maxTokens: 600
                 ))
                 profile = AppProfile(reason: result["reason"].text, category: result["category"].text, dateMode: result["dateMode"].text, facts: result["facts"].items.map(\.jsString), source: "llm")
@@ -121,8 +123,8 @@ extension Pipeline {
             }
         }
         let saved = profile
-        _ = try? await update(dir) { draft in
-            draft["appProfile"] = saved.json
+        _ = try? await updateState(dir) { draft in
+            draft.appProfile = saved.json
             appendLog(&draft, "已判断：\(saved.summary)")
         }
         return profile

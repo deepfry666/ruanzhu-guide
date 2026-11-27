@@ -56,13 +56,13 @@ public func dataEditCheck(_ result: JSON, screenIds: [String]) -> [String] {
 
 extension Pipeline {
     /// 按修改要求改数据底账和示例数据，写回规划，并给数据变了的屏重新拼好提示词。返回数据变了的屏。
-    func applyDataEdit(_ dir: String, _ state: JSON, _ instruction: String) async throws -> [String] {
+    func applyDataEdit(_ dir: String, _ state: ProjectState, _ instruction: String) async throws -> [String] {
         let paths = projectPaths(dir)
         guard var raw = try FS.readJSON(paths.screenPlan), let plan = try readPlan(dir) else { throw StudioError("还没有界面规划") }
         let screens = plan["screens"].items
         let screenIds = screens.map { $0["id"].text }
         let name = softwareName(state)
-        let profile = AppProfile(state["appProfile"]) ?? keywordAppProfile(name)
+        let profile = AppProfile(state.appProfile) ?? keywordAppProfile(name)
         let rules = planRealDataRule(profile, text: name) + planDateRule(state, profile) + RED_LINE_RULE
         let result = try await callLlm("feedback", dir, ChatJsonRequest(
             system: DATA_EDIT_SYSTEM,
@@ -103,20 +103,26 @@ extension Pipeline {
         let settings = try await settingsStore.get()
         let platform = platformOf(state, settings)
         let ui = normalizedUi(plan)
-        var patchesById: [String: JSON] = [:]
+        var patchesById: [String: (rowHash: String, promptHash: String)] = [:]
         try FS.mkdirp(paths.prompts)
         for id in changed {
             guard let screen = next["screens"].items.first(where: { $0["id"].text == id }) else { continue }
             var prompt = composeScreenPrompt(softwareName: name, platform: platform, targetSize: settings.image.targetSize, ui: ui, screen: screen)
             if dateRuleActive(state) { prompt = ensureContentDateRule(prompt, state) }
             try FS.writeAtomic(paths.promptFile(id), prompt)
-            patchesById[id] = .obj(["planRowHash": .string(planRowHash(screen, ui, platform, settings.image.targetSize)), "promptHash": .string(promptIdentity(prompt, name)), "promptEdited": false])
+            patchesById[id] = (planRowHash(screen, ui, platform, settings.image.targetSize), promptIdentity(prompt, name))
         }
         let summary = result["summary"].text
         let fixed = fixes.count
         let all = patchesById
-        try await update(dir) { draft in
-            for (id, patch) in all { draft.mergeChild("screens", id, patch) }
+        try await updateState(dir) { draft in
+            for (id, info) in all {
+                var shot = draft[screen: id] ?? ScreenState(.emptyObject)
+                shot.planRowHash = info.rowHash
+                shot.promptHash = info.promptHash
+                shot.promptEdited = false
+                draft[screen: id] = shot
+            }
             appendLog(&draft, "按修改意见改数据：\(summary.isEmpty ? instruction : summary)（\(changed.isEmpty ? "各屏数据没有变化" : "数据变了的屏：\(changed.joined(separator: "、"))")\(fixed > 0 ? "，另改了 \(fixed) 处范围外的日期" : "")）")
         }
         return changed
