@@ -33,9 +33,9 @@ struct ScreenPreviewSheet: View {
                     VStack(alignment: .leading, spacing: Spacing.md) {
                         SettingsGroup {
                             SettingsRow(label: "检查") { let tag = gateTag(gate); TagView(text: tag.0, tone: tag.1) }
-                            SettingsRow(label: "线路") { Text("\(screen.state["providerName"]?.string ?? "—")\(screen.state["model"]?.string.map { "（\($0)）" } ?? "")") }
-                            SettingsRow(label: "尺寸") { Text(screen.state["width"]?.int.map { "\($0)×\(screen.state["height"]?.int ?? 0)" } ?? "—") }
-                            SettingsRow(label: "生成时间") { Text(formatTime(screen.state["generatedAt"]?.string)) }
+                            SettingsRow(label: "线路") { Text("\(screen.state.providerName ?? "—")\(screen.state.model.map { "（\($0)）" } ?? "")") }
+                            SettingsRow(label: "尺寸") { Text(screen.state.width.map { "\($0)×\(screen.state.height ?? 0)" } ?? "—") }
+                            SettingsRow(label: "生成时间") { Text(formatTime(screen.state.generatedAt)) }
                         }
                         if let inventory = gate?["inventory"]?.string {
                             Text("看图模型抄录的界面内容").textStyle(Typography.bodyStrong)

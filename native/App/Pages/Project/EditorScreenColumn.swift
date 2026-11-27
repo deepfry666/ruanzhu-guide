@@ -27,7 +27,7 @@ extension EditorTab {
             .clipShape(Radius.shape(Radius.large))
             FlowLayout(spacing: Spacing.xs) {
                 TagView(text: tag.0, tone: tag.1)
-                if screen.state["promptEdited"].isTruthy && data.origin != "imported" { TagView(text: "提示词已改", tone: .purple) }
+                if screen.state.promptEdited == true && data.origin != "imported" { TagView(text: "提示词已改", tone: .purple) }
             }
             if ["failed", "error"].contains(gate?["status"]?.string ?? "") {
                 Text(gate?["reasons"].items.map(\.jsString).joined(separator: "；") ?? "").textStyle(Typography.caption).foregroundStyle(Palette.danger)

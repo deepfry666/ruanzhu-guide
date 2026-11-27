@@ -58,7 +58,7 @@ extension ProjectsView {
         if targets.contains(where: \.pdfFontProblem) {
             Button("忽略字体提示") { ignoreFonts(targets) }
         }
-        if targets.contains(where: { $0.queue != nil && $0.queue?["status"]?.string != "running" }) {
+        if targets.contains(where: { $0.queueItem != nil && $0.queueItem?.status != .running }) {
             Button("移出队列") {
                 Task {
                     await model.core?.batchRemoveProjects(targets.map(\.dir))
@@ -78,7 +78,7 @@ extension ProjectsView {
         }
         Divider()
         Button("从列表移除…") { askRemove(targets) }
-            .disabled(targets.allSatisfy { $0.status == "running" })
+            .disabled(targets.allSatisfy { $0.status == .running })
     }
 
     /// 选中项目后出现在底部：带文字的批量操作，和右键菜单内容一致
@@ -165,7 +165,7 @@ extension ProjectsView {
     }
 
     func askRemove(_ targets: [ProjectRow]) {
-        let removable = targets.filter { $0.status != "running" }
+        let removable = targets.filter { $0.status != .running }
         if removable.isEmpty {
             if !targets.isEmpty { model.toast(.info, "选中的项目都在运行，先停止再移除") }
             return

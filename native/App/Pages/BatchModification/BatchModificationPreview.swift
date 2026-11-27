@@ -39,7 +39,7 @@ private struct ModificationProjectPreview: View {
             }.padding(Spacing.lg)
         }
     }
-    var pending: [FeedbackItem] { (ProjectState(preview.data.state).feedback ?? []).filter { $0.status == "pending" } }
+    var pending: [FeedbackItem] { preview.data.pendingFeedbackItems }
     func sources(_ question: JSON) -> [FeedbackItem] { pending.filter { item in question["items"].items.contains { $0.string == item.id } } }
     func question(_ index: Int) -> some View {
         let item = preview.questions[index]

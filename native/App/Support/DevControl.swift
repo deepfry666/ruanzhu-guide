@@ -41,7 +41,7 @@ final class DevControl {
         case "open": model.openProject(value)
         case "trialStep":
             // 试用验收专用：明确限定到单个本机步骤，不会继续执行后续 AI 步骤。
-            guard AppModel.isTrial, !model.trialMeasure, ["receipt", "build"].contains(value),
+            guard AppModel.isTrial, !model.trialMeasure, [PipelineStepName.receipt.rawValue, PipelineStepName.build.rawValue].contains(value),
                   let core = model.core, let dir = model.projectPath.last,
                   Path.isInside(TrialData.canonical(Path.join(model.dataDir, "workspace")), TrialData.canonical(dir)),
                   model.projects.contains(where: { $0.dir == dir }) else { return }
@@ -62,9 +62,13 @@ final class DevControl {
                         try FS.writeJSONAtomic(Path.join(model.dataDir, "trial-export-result.json"), result)
                     } else {
                         // 等效于换图后失效的验收状态，不执行任何模型步骤。
-                        _ = try await core.projectStore.update(dir) { state in
-                            state.mergeChild("steps", "gate", ["status": "pending"])
-                            state["status"] = "idle"
+                        _ = try await core.projectStore.update(dir) { raw in
+                            var typed = ProjectState(raw)
+                            var gate = typed[step: .gate] ?? StepState(.emptyObject)
+                            gate.status = .pending
+                            typed[step: .gate] = gate
+                            typed.status = .idle
+                            raw = typed.raw
                         }
                         model.bump(dir)
                     }
@@ -190,7 +194,7 @@ final class DevControl {
                 self.stressCount += 1
                 let dirs = model.projects.prefix(12).map(\.dir) + model.projectPath
                 guard let dir = dirs.randomElement() else { return }
-                let progress: JSON = .obj(["step": "images", "started": .number(nowMs() - 60_000), "stepStarted": .number(nowMs() - 20_000),
+                let progress: JSON = .obj(["step": .string(PipelineStepName.images.rawValue), "started": .number(nowMs() - 60_000), "stepStarted": .number(nowMs() - 20_000),
                                            "screens": .obj(["finished": .number(Double(self.stressCount % 7)), "total": 7]), "detail": .string("模拟进度 \(self.stressCount)")])
                 model.handle(.obj(["type": "progress", "projectDir": .string(dir), "progress": progress]))
                 if self.stressCount % 3 == 0 { model.handle(.obj(["type": "image", "projectDir": .string(dir), "kind": "attempt"])) }

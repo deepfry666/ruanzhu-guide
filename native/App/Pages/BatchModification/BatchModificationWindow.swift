@@ -93,7 +93,7 @@ struct BatchModificationWindow: View {
 struct PendingModificationSummary: View {
     let data: ProjectData
     @Environment(AppModel.self) private var model
-    var pending: [FeedbackItem] { (ProjectState(data.state).feedback ?? []).filter { $0.status == "pending" } }
+    var pending: [FeedbackItem] { data.pendingFeedbackItems }
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             HStack {
@@ -101,7 +101,7 @@ struct PendingModificationSummary: View {
                 Spacer()
                 if !data.readOnly {
                     Button("批量修改…") { model.batchModification = BatchModificationRequest(dirs: [data.dir]) }
-                        .disabled(data.runningFlag || data.status == "running")
+                        .disabled(data.runningFlag || data.status == .running)
                 }
             }
             ForEach(Array(pending.enumerated()), id: \.offset) { index, item in

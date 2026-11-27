@@ -12,7 +12,7 @@ struct PlanTab: View {
     var body: some View {
         let readOnly = data.readOnly
         if let plan = data.plan {
-            let waiting = data.stepStatus("plan") == "review"
+            let waiting = data.stepStatus(.plan) == .review
             VStack(alignment: .leading, spacing: Spacing.lg) {
                 SettingsGroup(title: "规划概要", trailing: AnyView(HStack {
                     if waiting {
@@ -64,7 +64,7 @@ struct PlanTab: View {
                 }
             }
             .confirmationDialog("重新规划？", isPresented: $replanConfirm, titleVisibility: .visible) {
-                Button("重新规划") { model.core?.run(data.dir, RunOptions(from: "plan", force: ["plan"], reviewPlan: true)) }
+                Button("重新规划") { model.core?.run(data.dir, RunOptions(from: PipelineStepName.plan.rawValue, force: [PipelineStepName.plan.rawValue], reviewPlan: true)) }
             } message: {
                 Text("会让大模型重新设计全部界面，之后所有截图都要重新生成，文案也会重写（人工改过的除外）。")
             }
@@ -72,7 +72,7 @@ struct PlanTab: View {
             VStack(spacing: Spacing.lg) {
                 EmptyHint(title: "还没有界面规划", systemImage: "rectangle.3.group")
                 if !readOnly {
-                    Button("开始规划") { model.core?.run(data.dir, RunOptions(until: "plan", reviewPlan: true)) }
+                    Button("开始规划") { model.core?.run(data.dir, RunOptions(until: PipelineStepName.plan.rawValue, reviewPlan: true)) }
                         .buttonStyle(.primary)
                         .disabled(running)
                 }

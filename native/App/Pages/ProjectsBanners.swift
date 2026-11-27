@@ -8,8 +8,8 @@ struct ProgressCell: View {
     var body: some View {
         if row.historyReadOnly {
             Text("只有交付包，没有源文件").foregroundStyle(Palette.textSecondary)
-        } else if row.status == "running" {
-            let step = row.progress?["step"]?.string ?? row.stepSummary.current
+        } else if row.status == .running {
+            let step = row.liveStep ?? row.stepSummary.current
             let index = step.flatMap { STEP_ORDER.firstIndex(of: $0) }.map { $0 + 1 } ?? 1
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 Text("第 \(index) 步 / 共 \(STEP_ORDER.count) 步 · \(step.flatMap { UI_STEP_LABELS[$0] } ?? "准备中")")
@@ -18,9 +18,9 @@ struct ProgressCell: View {
             }
         } else {
             let summary = row.stepSummary
-            Text("\(summary.done)/\(STEP_ORDER.count)\(summary.current.map { " · \(UI_STEP_LABELS[$0] ?? $0)" } ?? " · 完成")")
+            Text("\(summary.done)/\(STEP_ORDER.count)\(summary.current.map { " · \(UI_STEP_LABELS[$0] ?? $0.rawValue)" } ?? " · 完成")")
                 .foregroundStyle(Palette.textSecondary)
-                .help(row.lastError.map { splitDiagnostics($0).text } ?? row.queue?["error"]?.string ?? (summary.current.map { "下一步：\(UI_STEP_LABELS[$0] ?? $0)" } ?? "全部完成"))
+                .help(row.lastError.map { splitDiagnostics($0).text } ?? row.queueItem?.error ?? (summary.current.map { "下一步：\(UI_STEP_LABELS[$0] ?? $0.rawValue)" } ?? "全部完成"))
         }
     }
 }
@@ -32,22 +32,23 @@ struct QueueBar: View {
 
     /// 空闲时（没有运行、排队、暂停或需要处理的）不占位置
     static func visible(_ model: AppModel) -> Bool {
-        model.batchPaused || model.batchItems.contains { ["running", "queued", "paused", "failed", "needs-attention"].contains($0["status"]?.string ?? "") }
+        let active: Set<QueueStatus> = [.running, .queued, .paused, .failed, .needsAttention]
+        return model.batchPaused || model.batchItems.contains { item in item.status.map { active.contains($0) } == true }
     }
 
     var body: some View {
         let items = model.batchItems
         if QueueBar.visible(model) {
-            let counts = Dictionary(grouping: items, by: { $0["status"]?.string ?? "" }).mapValues(\.count)
-            let unfinished = (counts["running"] ?? 0) + (counts["queued"] ?? 0) + (counts["paused"] ?? 0)
-            let attention = (counts["failed"] ?? 0) + (counts["needs-attention"] ?? 0)
+            let counts = Dictionary(grouping: items, by: \.status).mapValues(\.count)
+            let unfinished = (counts[.running] ?? 0) + (counts[.queued] ?? 0) + (counts[.paused] ?? 0)
+            let attention = (counts[.failed] ?? 0) + (counts[.needsAttention] ?? 0)
             VStack(alignment: .leading, spacing: Spacing.md) {
             HStack(spacing: Spacing.md) {
                 Text("批量处理").fontWeight(.semibold)
                 HStack(spacing: Spacing.xs) {
-                    Text("运行中 \(counts["running"] ?? 0) · 排队 \(counts["queued"] ?? 0) · 完成 \(counts["done"] ?? 0)")
+                    Text("运行中 \(counts[.running] ?? 0) · 排队 \(counts[.queued] ?? 0) · 完成 \(counts[.done] ?? 0)")
                     if attention > 0 { Text("· 需处理 \(attention)").foregroundStyle(Palette.danger) }
-                    if let paused = counts["paused"], paused > 0 { Text("· 已暂停 \(paused)") }
+                    if let paused = counts[.paused], paused > 0 { Text("· 已暂停 \(paused)") }
                 }
                 .monospacedDigit()
                 HStack(spacing: Spacing.sm) {
@@ -74,14 +75,15 @@ struct QueueBar: View {
                 Divider()
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: Spacing.sm) {
-                        ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                            let entry = BatchQueueItem(item)
+                        ForEach(Array(items.enumerated()), id: \.offset) { _, entry in
                             let dir = entry.projectDir ?? ""
                             HStack(spacing: Spacing.md) {
                                 Text(model.projects.first { $0.dir == dir }?.name ?? Path.basename(dir)).lineLimit(1)
                                 Spacer()
-                                let status = entry.status?.rawValue ?? ""
-                                Text(PROJECT_STATUS[status]?.label ?? QUEUE_LABEL[status] ?? status)
+                                let label = entry.status.map { status in
+                                    PROJECT_STATUS[ProjectStatus(rawValue: status.rawValue)]?.label ?? QUEUE_LABEL[status] ?? status.rawValue
+                                } ?? ""
+                                Text(label)
                                     .foregroundStyle(Palette.textSecondary)
                                 if let error = entry.error { Text(error).lineLimit(2).foregroundStyle(Palette.danger) }
                             }
@@ -106,7 +108,7 @@ struct SetupHint: View {
         let providers = model.settings.providers.filter { $0.enabled && (model.providerKeys[$0.id] ?? false) }
         var missing: [(String, String)] = []
         if providers.isEmpty { missing.append(("还没有可用的生图线路（需要启用并填好密钥）", "providers")) }
-        if model.settings.llm.assignment("plan") == nil || model.settings.llm.assignment("content") == nil { missing.append(("还没有给「规划界面」和「撰写说明文字」选择大模型", "llm")) }
+        if model.settings.llm.assignment(PipelineStepName.plan.rawValue) == nil || model.settings.llm.assignment(PipelineStepName.content.rawValue) == nil { missing.append(("还没有给「规划界面」和「撰写说明文字」选择大模型", "llm")) }
         return missing
     }
 
@@ -124,7 +126,7 @@ struct SetupHint: View {
                         }
                         .textStyle(Typography.body)
                     }
-                    if model.settings.llm.assignment("gate") == nil {
+                    if model.settings.llm.assignment(PipelineStepName.gate.rawValue) == nil {
                         Text("检查截图要用看图模型；没有配置时，需要人工逐张确认截图里没有软件名。").textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
                     }
                 }

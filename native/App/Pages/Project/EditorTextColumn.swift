@@ -8,7 +8,7 @@ extension EditorTab {
         if contentScreens.contains(where: { $0["id"]?.string == id }) {
             let text = texts[id] ?? ""
             let length = text.jsTrimmed.jsLength
-            let edited = data.state["screens"]?[id]?["textEdited"].isTruthy ?? false
+            let edited = data.screenState(id)?.textEdited ?? false
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 FlowLayout(spacing: Spacing.sm) {
                     Text("图\(index + 1)").fontWeight(.semibold)

@@ -27,23 +27,23 @@ struct LivePanel: View {
     }
 
     func panel(now: Double) -> some View {
-        let planned = live["plannedSteps"].items.compactMap(\.string)
+        let planned = live["plannedSteps"].items.compactMap(\.string).map(PipelineStepName.init(rawValue:))
         let steps = planned.isEmpty ? STEP_ORDER : planned
-        let done = live["doneSteps"].items.compactMap(\.string)
-        let step = live["step"]?.string
+        let done = live["doneSteps"].items.compactMap(\.string).map(PipelineStepName.init(rawValue:))
+        let step = live["step"]?.string.map(PipelineStepName.init(rawValue:))
         let remainingSteps = steps.filter { !done.contains($0) && $0 != step }
         let estimates = model.core?.stepEstimates() ?? [:]
-        let currentEst = step.flatMap { estimates[$0] }
+        let currentEst = step.flatMap { estimates[$0.rawValue] }
         let stepStarted = live["stepStarted"]?.number
         let currentElapsed = stepStarted.map { now - $0 } ?? 0
         // 只对「上次实际跑过」的步骤做估算；没有历史数据时不显示，免得乱报
-        let hasEstimate = step != nil && currentEst != nil && remainingSteps.allSatisfy { estimates[$0] != nil || ["design", "receipt", "prompts"].contains($0) }
-        let remainingMs: Double? = hasEstimate ? max(0, (currentEst ?? 0) - currentElapsed) + remainingSteps.reduce(0) { $0 + (estimates[$1] ?? 0) } : nil
+        let hasEstimate = step != nil && currentEst != nil && remainingSteps.allSatisfy { estimates[$0.rawValue] != nil || [PipelineStepName.design, .receipt, .prompts].contains($0) }
+        let remainingMs: Double? = hasEstimate ? max(0, (currentEst ?? 0) - currentElapsed) + remainingSteps.reduce(0) { $0 + (estimates[$1.rawValue] ?? 0) } : nil
         let index = step.flatMap { steps.firstIndex(of: $0) } ?? 0
         var screens: [String: JSON] = [:]
         for (id, screen) in live["screens"].fields where screen["status"]?.string != "kept" { screens[id] = screen }
         let finished = screens.filter { ["generated", "passed"].contains($0.value["status"]?.string ?? "") }.count
-        let inside = !screens.isEmpty && step.map { ["images", "gate"].contains($0) } == true ? Double(finished) / Double(screens.count) : 0.3
+        let inside = !screens.isEmpty && step.map { [PipelineStepName.images, .gate].contains($0) } == true ? Double(finished) / Double(screens.count) : 0.3
         let percent = max(0.02, min(0.99, (Double(max(0, index)) + inside) / Double(max(1, steps.count))))
         var titles: [String: String] = [:]
         for (order, screen) in (data.plan?["screens"].items ?? []).enumerated() {
@@ -62,7 +62,7 @@ struct LivePanel: View {
                     Text("当前：")
                     Text(step.flatMap { UI_STEP_LABELS[$0] } ?? "准备中").fontWeight(.semibold)
                     if let detail = live["detail"]?.string { Text("（\(detail)）") }
-                    if let step, ["images", "gate"].contains(step), !screens.isEmpty { Text("  \(finished)/\(screens.count) 张") }
+                    if let step, [PipelineStepName.images, .gate].contains(step), !screens.isEmpty { Text("  \(finished)/\(screens.count) 张") }
                 }
                 Text("本步 \(formatDuration(currentElapsed))").foregroundStyle(Palette.textSecondary)
                 HStack(spacing: 0) {

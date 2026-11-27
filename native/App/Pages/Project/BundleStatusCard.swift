@@ -5,10 +5,9 @@ import SwiftUI
 struct BundleStatusCard: View {
     let data: ProjectData
 
-    private var pending: [String] {
-        let state = ProjectState(data.state)
-        return STEP_ORDER.filter {
-            let status = state[step: PipelineStepName(rawValue: $0)]?.status
+    private var pending: [PipelineStepName] {
+        STEP_ORDER.filter {
+            let status = data.stepStatus($0)
             return status != .done && status != .skipped
         }
     }
@@ -16,16 +15,16 @@ struct BundleStatusCard: View {
     var body: some View {
         Card(title: "交付包状态") {
             VStack(alignment: .leading, spacing: Spacing.sm) {
-                if data.state["bundleUpdating"].isTruthy {
+                if data.bundleUpdating {
                     TagView(text: "更新中", tone: .blue)
                     Text("正在更新交付文件，打开或导出时会等待完成。")
-                } else if let error = data.state["bundleUpdateError"]?.string {
+                } else if let error = data.bundleUpdateError {
                     TagView(text: "待更新", tone: .red)
                     Text(error)
                 } else if !pending.isEmpty || data.bundleFiles.isEmpty {
                     TagView(text: "待更新", tone: .orange)
-                    Text(data.bundleFiles.isEmpty ? "还没有交付文件。" : "尚未完成：\(pending.map { UI_STEP_LABELS[$0] ?? $0 }.joined(separator: "、"))")
-                    if pending.contains(where: { !["receipt", "build"].contains($0) }) {
+                    Text(data.bundleFiles.isEmpty ? "还没有交付文件。" : "尚未完成：\(pending.map { UI_STEP_LABELS[$0] ?? $0.rawValue }.joined(separator: "、"))")
+                    if pending.contains(where: { $0 != .receipt && $0 != .build }) {
                         Text(data.readOnly ? "项目只读，需要取消已提交后才能继续。" : "需要继续生成（可能调用 AI），请使用工具栏「继续」。")
                     } else if !data.readOnly {
                         Text("等待本机自动更新。")

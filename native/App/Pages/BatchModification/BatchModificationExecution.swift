@@ -20,8 +20,8 @@ extension BatchModificationState {
         do {
             for preview in selected where force == "none" {
                 guard let current = projects[preview.dir],
-                      ProjectState(current.state).feedback == ProjectState(preview.data.state).feedback,
-                      ProjectState(current.state).feedbackPlan == preview.originalPlan else {
+                      current.projectState.feedback == preview.data.projectState.feedback,
+                      current.projectState.feedbackPlan == preview.originalPlan else {
                     throw StudioError("意见或整理结果已变化，请返回重新预览后执行。")
                 }
                 guard preview.chosen.allSatisfy({ !$0["instruction"].text.jsTrimmed.isEmpty }) else {
@@ -56,7 +56,7 @@ extension BatchModificationState {
                     plan["questions"] = .array(preview.questions)
                     let confirmedPlan = plan
                     let originalPlan = preview.originalPlan
-                    let originalFeedback = ProjectState(preview.data.state).feedback
+                    let originalFeedback = preview.data.projectState.feedback
                     try await core.projectStore.update(preview.dir) { raw in
                         var current = ProjectState(raw)
                         guard current.feedbackPlan == originalPlan,

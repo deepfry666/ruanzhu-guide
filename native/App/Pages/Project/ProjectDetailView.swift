@@ -26,7 +26,7 @@ struct ProjectDetailView: View {
     @AppStorage("completedProjectBlooms") private var completedBlooms = ""
 
     var live: JSON? { model.signal(dir).live }
-    var running: Bool { (data?.runningFlag ?? false) || data?.status == "running" || live != nil }
+    var running: Bool { (data?.runningFlag ?? false) || data?.status == .running || live != nil }
 
     var body: some View {
         Group {
@@ -69,15 +69,15 @@ struct ProjectDetailView: View {
             }
             let identity = Data(dir.utf8).base64EncodedString()
             let completed = Set(completedBlooms.split(separator: "|").map(String.init))
-            if sawGeneration, next.status == "done", !next.state["bundleUpdating"].isTruthy, !completed.contains(identity) {
+            if sawGeneration, next.status == .done, !next.bundleUpdating, !completed.contains(identity) {
                 completedBlooms += "|" + identity
                 bloomTrigger.toggle()
                 sawGeneration = false
             }
-            if next.runningFlag, !next.state["bundleUpdating"].isTruthy { sawGeneration = true }
+            if next.runningFlag, !next.bundleUpdating { sawGeneration = true }
 
             // 默认标签只决定首次打开；保存、恢复旧图和后台任务不替用户切页。
-            if tab == nil { tab = next.status == "done" ? .editor : .overview }
+            if tab == nil { tab = next.status == .done ? .editor : .overview }
             data = next
             loadError = nil
         } catch {
@@ -87,7 +87,7 @@ struct ProjectDetailView: View {
 
     /// 每个项目首次打开时由状态决定，手动切换只影响当前项目。
     var activeTab: ProjectTab {
-        tab ?? (data?.status == "done" ? .editor : .overview)
+        tab ?? (data?.status == .done ? .editor : .overview)
     }
 
     /// 历史项目列表当前顺序里的上一个 / 下一个（跟着列表的搜索和筛选）
@@ -115,9 +115,9 @@ struct ProjectDetailView: View {
     @ViewBuilder
     func content(_ data: ProjectData) -> some View {
         let readOnly = data.readOnly
-        let statusKey = running ? "running" : data.submitted ? "submitted" : readOnly ? "readonly" : data.status
-        let status = PROJECT_STATUS[statusKey] ?? (data.status, .neutral)
-        let waitingStep = STEP_ORDER.first { data.stepStatus($0) == "review" }
+        let statusKey: ProjectStatus = running ? .running : data.submitted ? .submitted : readOnly ? .readonly : data.status
+        let status = PROJECT_STATUS[statusKey] ?? (statusKey.rawValue, .neutral)
+        let waitingStep = STEP_ORDER.first { data.stepStatus($0) == .review }
         let refresh: () -> Void = { Task { await reload() } }
         VStack(spacing: 0) {
             ProjectHeaderLayout {
@@ -197,7 +197,7 @@ struct ProjectDetailView: View {
             PageScroll {
                 if contentReady {
                     HStack(spacing: Spacing.xs) {
-                        if data.state["bundleUpdating"].isTruthy { TagView(text: "交付包更新中", tone: .blue) }
+                        if data.bundleUpdating { TagView(text: "交付包更新中", tone: .blue) }
                         if data.origin == "imported" { TagView(text: "历史") }
                         Spacer()
                     }
@@ -213,7 +213,7 @@ struct ProjectDetailView: View {
                     } else if model.codeBatch?.pending.contains(dir) == true {
                         Banner(.info, "排在更新代码材料的队伍里，轮到它时会自动处理")
                     }
-                    if let lastError = data.state["lastError"]?.string, !running, !data.submitted {
+                    if let lastError = data.lastError, !running, !data.submitted {
                         let error = splitDiagnostics(lastError)
                         Banner(.error, "需要处理", message: error.text) {
                             if let path = error.path, FS.exists(path) {
@@ -221,21 +221,22 @@ struct ProjectDetailView: View {
                             }
                         }
                     }
-                    if let error = data.state["bundleUpdateError"]?.string, !data.readOnly {
+                    if let error = data.bundleUpdateError, !data.readOnly {
                         Banner(.error, "交付包更新失败", message: error) {
                             Button("重试") { Task { await model.core?.retryBundleUpdate(dir) } }
                         }
                     } else if model.core?.pipeline.bundleNeedsContinuation(data.state) == true, !running {
-                        Banner(.warning, "交付包待更新", message: "需要继续：\(STEP_ORDER.filter { !["receipt", "build"].contains($0) && !["done", "skipped"].contains(data.stepStatus($0)) }.map { UI_STEP_LABELS[$0] ?? $0 }.joined(separator: "、"))（可能调用 AI）") {
+                        let todo = STEP_ORDER.filter { $0 != .receipt && $0 != .build && ![StepStatus.done, .skipped].contains(data.stepStatus($0)) }
+                        Banner(.warning, "交付包待更新", message: "需要继续：\(todo.map { UI_STEP_LABELS[$0] ?? $0.rawValue }.joined(separator: "、"))（可能调用 AI）") {
                             Button("继续") { model.core?.run(dir) }.buttonStyle(.primary)
                         }
                     }
-                    if let notice = data.state["bundleUpdateNotice"]?.string {
+                    if let notice = data.bundleUpdateNotice {
                         Banner(.warning, notice)
                     }
-                    if let step = waitingStep, step != "build", !running {
-                        Banner(.warning, step == "plan" ? "界面规划已生成，请在「规划」里检查，确认后继续生图" : data.stepMessage(step) ?? "「\(UI_STEP_LABELS[step] ?? step)」等待确认") {
-                            if step == "plan" {
+                    if let step = waitingStep, step != .build, !running {
+                        Banner(.warning, step == .plan ? "界面规划已生成，请在「规划」里检查，确认后继续生图" : data.stepMessage(step) ?? "「\(UI_STEP_LABELS[step] ?? step.rawValue)」等待确认") {
+                            if step == .plan {
                                 Button("确认规划，继续") {
                                     Task { await model.perform { _ = try await model.core?.pipeline.confirmPlan(dir) } }
                                 }

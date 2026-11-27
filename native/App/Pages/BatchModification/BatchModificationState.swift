@@ -62,13 +62,14 @@ final class BatchModificationState {
     }
 
     func pending(_ data: ProjectData) -> [FeedbackItem] {
-        (ProjectState(data.state).feedback ?? []).filter { $0.status == "pending" }
+        data.pendingFeedbackItems
     }
     func reason(_ data: ProjectData) -> String? {
         if data.readOnly { return "已提交或只读" }
-        if data.runningFlag || data.status == "running" || model.core?.pipeline.isRunning(data.dir) == true { return "正在运行" }
-        if model.core?.batch.list().items.map(BatchQueueItem.init).contains(where: {
-            $0.projectDir == data.dir && ["queued", "paused", "running"].contains($0.status?.rawValue ?? "")
+        if data.runningFlag || data.status == .running || model.core?.pipeline.isRunning(data.dir) == true { return "正在运行" }
+        let busyQueue: Set<QueueStatus> = [.queued, .paused, .running]
+        if model.core?.batch.list().items.map(BatchQueueItem.init).contains(where: { item in
+            item.projectDir == data.dir && item.status.map { busyQueue.contains($0) } == true
         }) == true { return "正在运行或排队" }
         return nil
     }

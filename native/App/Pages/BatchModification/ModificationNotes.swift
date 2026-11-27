@@ -9,7 +9,7 @@ struct FeedbackTarget: Hashable {
         options += data.screens.enumerated().map { FeedbackTarget(value: $0.element.id, label: "图\($0.offset + 1)「\($0.element.title)」") }
         options.append(FeedbackTarget(value: "all", label: "全部截图"))
         options.append(FeedbackTarget(value: "overview", label: "封面介绍"))
-        if ProjectState(data.state).request?.wantDesign == true { options.append(FeedbackTarget(value: "design", label: "设计说明")) }
+        if data.request.wantDesign == true { options.append(FeedbackTarget(value: "design", label: "设计说明")) }
         return options
     }
     static func label(_ value: String?, in options: [FeedbackTarget]) -> String? {
@@ -24,7 +24,7 @@ struct ModificationNotes: View {
     @State private var showDone = false
     var body: some View {
         let pending = state.pending(data)
-        let done = (ProjectState(data.state).feedback ?? []).filter { $0.status == "done" }
+        let done = data.feedbackItems.filter { $0.status == "done" }
         SettingsGroup(title: "\(data.name) · 待处理 \(pending.count) 条") {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 if pending.isEmpty && done.isEmpty { Text("没有已保存的意见").foregroundStyle(Palette.textSecondary) }

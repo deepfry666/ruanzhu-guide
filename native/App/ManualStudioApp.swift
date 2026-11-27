@@ -46,8 +46,9 @@ struct ManualStudioApp: App {
                 Button("检查并更新") {
                     if let dir = model.projectPath.last {
                         Task {
-                            guard let core = model.core, let data = try? await core.getProject(dir) else { return }
-                            if core.pipeline.bundleNeedsContinuation(data["state"] ?? .emptyObject) { core.run(dir) }
+                            guard let core = model.core, let raw = try? await core.getProject(dir) else { return }
+                            let project = ProjectData(json: raw)
+                            if core.pipeline.bundleNeedsContinuation(project.state) { core.run(dir) }
                             else { await core.retryBundleUpdate(dir) }
                         }
                     }

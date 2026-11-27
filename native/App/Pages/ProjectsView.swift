@@ -1,7 +1,7 @@
 import StudioCore
 import SwiftUI
 
-let QUEUE_LABEL: [String: String] = ["queued": "排队中", "paused": "已暂停"]
+let QUEUE_LABEL: [QueueStatus: String] = [.queued: "排队中", .paused: "已暂停"]
 
 /// 时间筛选：项目在那段时间里新建、完成、生成交付包或有改动，任意一样都算；用本机时区的自然日。
 let TIME_FILTERS: [(value: String, label: String)] = [("all", "全部时间"), ("today", "今天"), ("yesterday", "昨天"), ("week", "最近 7 天")]
@@ -191,7 +191,7 @@ struct ProjectsView: View {
     var setupMissing: Bool { SetupHint.missing(model).isEmpty == false }
 
     var subtitle: String {
-        let running = model.projects.filter { $0.status == "running" }.count
+        let running = model.projects.filter { $0.status == .running }.count
         let filtered = true
         let total = filtered ? "显示 \(rows.count) / 共 \(model.projects.count) 个" : "共 \(model.projects.count) 个"
         return running > 0 ? "\(total) · \(running) 个运行中" : total

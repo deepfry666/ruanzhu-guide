@@ -74,7 +74,7 @@ extension ProjectsView {
                         .labelStyle(.titleAndIcon)
                         .help("批量修改：粘一份软件名清单（或先多选项目），写要改什么，一次改完")
                     Button {
-                        let dirs = model.projects.filter { $0.hasBundle && $0.status != "missing" && ($0.status == "done" || $0.origin == "imported") }.map(\.dir)
+                        let dirs = model.projects.filter { $0.hasBundle && $0.status != .missing && ($0.status == .done || $0.origin == "imported") }.map(\.dir)
                         if dirs.isEmpty { model.toast(.info, "还没有已完成的项目") } else { exportDirs = ExportRequest(dirs: dirs) }
                     } label: {
                         Label("导出全部已完成", systemImage: "square.and.arrow.up")

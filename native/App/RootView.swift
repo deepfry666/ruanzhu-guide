@@ -131,7 +131,7 @@ struct SidebarView: View {
         }
     }
 
-    var runningCount: Int { model.projects.filter { $0.status == "running" }.count }
+    var runningCount: Int { model.projects.filter { $0.status == .running }.count }
 }
 
 /// 提交途中退出、不确定是否已扣费的生图任务。
@@ -149,7 +149,7 @@ struct PendingJobsNotice: View {
                 }
                 Button("知道了") {
                     Task {
-                        for job in jobs { await model.core?.dismissJob(job["jobId"]?.string ?? "") }
+                        for job in jobs { await model.core?.dismissJob(job.jobId ?? "") }
                         model.reloadPendingJobs()
                     }
                 }

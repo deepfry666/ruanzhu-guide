@@ -121,9 +121,9 @@ final class AppModel {
     var vendorKeys: [String: Bool] = [:]
     var projects: [ProjectRow] = []
     var projectsLoaded = false
-    var batchItems: [JSON] = []
+    var batchItems: [BatchQueueItem] = []
     var batchPaused = false
-    var pendingJobs: [JSON] = []
+    var pendingJobs: [ImageJob] = []
     var activity: [String: [String]] = [:]
     /// 每个项目一份实时进度和刷新标记：一个项目有动静，只刷新看着它的界面（以前所有项目共用一张表，谁动都整页重画）
     @ObservationIgnored private var signals: [String: ProjectSignal] = [:]
@@ -183,8 +183,8 @@ final class AppModel {
         }
     }
 
-    var batchActive: Bool { batchItems.contains { ["queued", "running"].contains($0["status"]?.string ?? "") } }
-    var unknownJobs: [JSON] { pendingJobs.filter { $0["state"]?.string == "needs-attention" } }
+    var batchActive: Bool { batchItems.contains { $0.status == .queued || $0.status == .running } }
+    var unknownJobs: [ImageJob] { pendingJobs.filter { $0.state == ProjectStatus.needsAttention.rawValue } }
 
     // MARK: - 启动
 
@@ -270,12 +270,12 @@ final class AppModel {
     func reloadBatch() {
         guard let core else { return }
         let list = core.batch.list()
-        batchItems = list.items
+        batchItems = list.items.map(BatchQueueItem.init)
         batchPaused = list.paused
     }
 
     func reloadPendingJobs() {
-        pendingJobs = core?.pendingJobs() ?? []
+        pendingJobs = (core?.pendingJobs() ?? []).map(ImageJob.init)
     }
 
     func bump(_ dir: String) {
@@ -347,17 +347,17 @@ final class AppModel {
             quitIfIdleInBackground()
             scheduleProjectsReload(300)
             if let dir { bump(dir) }
-            if event["status"]?.string == "done" {
+            if event["status"]?.string.map(ProjectStatus.init(rawValue:)) == .done {
                 let text = "「\(event["name"]?.jsString ?? "")」完成，本次用时 \(formatDuration(event["ms"]?.number ?? 0))"
                 toast(.success, text)
                 if !NSApp.isActive && !batchActive { notify(text) }
             }
         case "batch":
             quitIfIdleInBackground()
-            batchItems = event["items"].items
+            batchItems = event["items"].items.map(BatchQueueItem.init)
             batchPaused = event["paused"].isTruthy
             scheduleProjectsReload(300)
-            let unfinished = batchItems.filter { ["queued", "running"].contains($0["status"]?.string ?? "") }.count
+            let unfinished = batchItems.filter { $0.status == .queued || $0.status == .running }.count
             if !batchItems.isEmpty, unfinished == 0, !batchNotified, !NSApp.isActive {
                 batchNotified = true
                 notify("批量队列已全部跑完")

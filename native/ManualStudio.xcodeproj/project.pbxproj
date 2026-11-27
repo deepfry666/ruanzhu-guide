@@ -197,7 +197,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 53;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
@@ -209,7 +209,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.24;
+				MARKETING_VERSION = 1.7.25;
 				PRODUCT_BUNDLE_IDENTIFIER = "local.manual-studio.native";
 				PRODUCT_NAME = "软件指南生成器";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -228,7 +228,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 53;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
@@ -240,7 +240,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.24;
+				MARKETING_VERSION = 1.7.25;
 				PRODUCT_BUNDLE_IDENTIFIER = "local.manual-studio.native";
 				PRODUCT_NAME = "软件指南生成器";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

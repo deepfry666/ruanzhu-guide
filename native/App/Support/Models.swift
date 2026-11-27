@@ -2,10 +2,10 @@ import Foundation
 import StudioCore
 
 /// 界面用的步骤名（比核心里的更短）。
-nonisolated let STEP_ORDER = PIPELINE_STEPS
-let UI_STEP_LABELS: [String: String] = [
-    "plan": "规划界面", "prompts": "提示词", "images": "生成截图", "gate": "检查截图",
-    "content": "撰写文案", "design": "设计说明", "receipt": "核对记录", "build": "交付包",
+nonisolated let STEP_ORDER: [PipelineStepName] = PIPELINE_STEPS.map(PipelineStepName.init(rawValue:))
+let UI_STEP_LABELS: [PipelineStepName: String] = [
+    .plan: "规划界面", .prompts: "提示词", .images: "生成截图", .gate: "检查截图",
+    .content: "撰写文案", .design: "设计说明", .receipt: "核对记录", .build: "交付包",
 ]
 
 enum Tone {
@@ -25,16 +25,16 @@ enum Tone {
     }
 }
 
-let PROJECT_STATUS: [String: (label: String, tone: Tone)] = [
-    "idle": ("未完成", .neutral),
-    "running": ("运行中", .blue),
-    "done": ("已完成", .green),
-    "waiting": ("等待确认", .orange),
-    "needs-attention": ("需要处理", .red),
-    "canceled": ("已停止", .neutral),
-    "missing": ("文件夹不见了", .red),
-    "readonly": ("只读", .neutral),
-    "submitted": ("已提交", .purple),
+let PROJECT_STATUS: [ProjectStatus: (label: String, tone: Tone)] = [
+    .idle: ("未完成", .neutral),
+    .running: ("运行中", .blue),
+    .done: ("已完成", .green),
+    .waiting: ("等待确认", .orange),
+    .needsAttention: ("需要处理", .red),
+    .canceled: ("已停止", .neutral),
+    .missing: ("文件夹不见了", .red),
+    .readonly: ("只读", .neutral),
+    .submitted: ("已提交", .purple),
 ]
 
 let GRADE_LABEL: [String: (label: String, tone: Tone)] = [
@@ -77,14 +77,14 @@ nonisolated enum ProjectGroup: String, CaseIterable {
 /// 优先级：已提交 → 实际运行/队列 → 异常 → 只读/完成。
 /// bundleUpdating 不改变归属，完成的项目更新交付包时仍归已完成。
 nonisolated func projectGroup(_ row: ProjectRow) -> ProjectGroup {
-    if row.submitted || row.status == "submitted" { return .submitted }
-    if row.status == "running" || ["queued", "paused", "running"].contains(row.queue.map { BatchQueueItem($0).status?.rawValue ?? "" } ?? "") { return .inProgress }
-    if row.status == "missing" || row.pdfFontProblem { return .attention }
-    if row.historyReadOnly || row.status == "readonly" || row.status == "done" { return .completed }
+    if row.submitted || row.status == .submitted { return .submitted }
+    if row.status == .running || row.queueItem?.status.map({ [.queued, .paused, .running].contains($0) }) == true { return .inProgress }
+    if row.status == .missing || row.pdfFontProblem { return .attention }
+    if row.historyReadOnly || row.status == .readonly || row.status == .done { return .completed }
     return .attention
 }
 
-/// 历史项目列表的一行。
+/// 历史项目列表的一行（封装 `listProjects()` 返回的汇总对象，状态与步骤暴露为类型化外壳）。
 nonisolated struct ProjectRow: Identifiable, Hashable, Sendable {
     let json: JSON
     /// 新建、生成、完成、最近改动的时间（列表按日期筛选用，载入时解析一次）。导入的项目不算导入那天。
@@ -110,16 +110,19 @@ nonisolated struct ProjectRow: Identifiable, Hashable, Sendable {
     /// 已提交：只读，批量操作跳过
     var submitted: Bool { json["submitted"].isTruthy }
     var readOnly: Bool { historyReadOnly || submitted }
-    var status: String { json["status"]?.string ?? "idle" }
-    func step(_ name: String) -> String { json["steps"]?[name]?.string ?? "pending" }
+    var status: ProjectStatus { json["status"]?.string.map(ProjectStatus.init(rawValue:)) ?? .idle }
+    func step(_ name: PipelineStepName) -> StepStatus { json["steps"]?[name.rawValue]?.string.map(StepStatus.init(rawValue:)) ?? .pending }
     var thumbnail: ProjectThumbnail? { ProjectThumbnail(raw: json["thumbnail"]) }
     var hasBundle: Bool { json["hasBundle"].isTruthy }
     var bundleFiles: Int? { json["bundleFiles"]?.int }
     var bundleUpdating: Bool { json["bundleUpdating"].isTruthy }
     var pdfFontProblem: Bool { json["pdfFontProblem"].isTruthy }
     var timing: JSON? { json["timing"].truthyValue }
-    var queue: JSON? { json["queue"].truthyValue }
+    var queueItem: BatchQueueItem? { json["queue"].truthyValue.map(BatchQueueItem.init) }
+    /// 队列中的排队位次（列表汇总接口附带的衍生字段，不在持久化 `BatchQueueItem` 中）。
+    var queuePosition: Int? { json["queue"]?["position"]?.int }
     var progress: JSON? { json["progress"].truthyValue }
+    var liveStep: PipelineStepName? { progress?["step"]?.string.map(PipelineStepName.init(rawValue:)) }
     var feedbackPending: Int { json["feedbackPending"]?.int ?? 0 }
     var lastBuildAt: String? { json["lastBuildAt"]?.string }
     var lastError: String? { json["lastError"]?.string }
@@ -132,21 +135,21 @@ nonisolated struct ProjectRow: Identifiable, Hashable, Sendable {
 
     /// 最近动过的时间（新建、修改、运行、生成交付包里最晚的一次，秒），列表默认按它排；载入时算一次
     let recency: Double
-    var statusSortKey: String { submitted ? "已提交" : status }
+    var statusSortKey: String { submitted ? "已提交" : status.rawValue }
     var lastBuildSortKey: String { lastBuildAt ?? "" }
 
     /// 用时列：完成用时，没完成时显示累计
     var mainDurationMs: Double? { timing.flatMap { $0["completedMs"]?.number ?? $0["totalMs"]?.number } }
 
-    var stepSummary: (done: Int, current: String?) {
-        let done = STEP_ORDER.filter { ["done", "skipped"].contains(step($0)) }.count
-        return (done, STEP_ORDER.first { !["done", "skipped"].contains(step($0)) })
+    var stepSummary: (done: Int, current: PipelineStepName?) {
+        let done = STEP_ORDER.filter { [.done, .skipped].contains(step($0)) }.count
+        return (done, STEP_ORDER.first { ![.done, .skipped].contains(step($0)) })
     }
 
     var livePercent: Double {
-        guard let live = progress, let current = live["step"]?.string, let index = STEP_ORDER.firstIndex(of: current) else { return 0.02 }
+        guard let live = progress, let current = liveStep, let index = STEP_ORDER.firstIndex(of: current) else { return 0.02 }
         var inside = 0.3
-        if ["images", "gate"].contains(current), let screens = live["screens"].truthyValue {
+        if [PipelineStepName.images, .gate].contains(current), let screens = live["screens"].truthyValue {
             inside = (screens["finished"]?.number ?? 0) / max(1, screens["total"]?.number ?? 1)
         }
         return max(0.02, min(0.99, (Double(index) + inside) / Double(STEP_ORDER.count)))
@@ -156,42 +159,51 @@ nonisolated struct ProjectRow: Identifiable, Hashable, Sendable {
     func hash(into hasher: inout Hasher) { hasher.combine(dir) }
 }
 
-/// 项目详情（getProject 的结果）。
+/// 项目详情（getProject 的结果），内部建立在核心库 `ProjectState` 外壳之上。
 struct ProjectData {
     let json: JSON
     var dir: String { json["dir"]?.string ?? "" }
-    var state: JSON { json["state"] ?? .emptyObject }
-    var request: JSON { state["request"] ?? .emptyObject }
-    var name: String { request["softwareName"]?.jsString ?? "" }
-    var status: String { state["status"]?.string ?? "idle" }
+    var projectState: ProjectState { ProjectState(json["state"] ?? .emptyObject) }
+    /// 供核心库仍接收原始 `JSON` 的辅助函数使用（#18 之前保持兼容）。
+    var state: JSON { projectState.raw }
+    var request: ProjectRequest { projectState.request ?? ProjectRequest(.emptyObject) }
+    var name: String { request.softwareName ?? "" }
+    var status: ProjectStatus { projectState.status ?? .idle }
     var runningFlag: Bool { json["running"].isTruthy }
     /// 只有交付包的历史项目
-    var historyReadOnly: Bool { state["readOnly"].isTruthy }
+    var historyReadOnly: Bool { projectState.readOnly ?? false }
     /// 已提交：只读，要改先取消
-    var submitted: Bool { isSubmitted(state) }
-    var submittedAt: String? { state["submitted"]?["at"]?.string }
+    var submitted: Bool { isSubmitted(projectState.raw) }
+    var submittedAt: String? { projectState.submitted?["at"]?.string }
     var readOnly: Bool { historyReadOnly || submitted }
-    var origin: String { state["origin"]?.string ?? "created" }
+    var origin: String { projectState.origin ?? "created" }
+    var lastError: String? { projectState.lastError }
+    /// 交付包自动更新运行态标记（#04 新增字段，尚未收录到 `ProjectState` 固定属性）。
+    var bundleUpdating: Bool { projectState.raw["bundleUpdating"].isTruthy }
+    var bundleUpdateError: String? { projectState.raw["bundleUpdateError"]?.string }
+    var bundleUpdateNotice: String? { projectState.raw["bundleUpdateNotice"]?.string }
     var plan: JSON? { json["plan"].truthyValue }
     var content: JSON? { json["content"].truthyValue }
     var screens: [ScreenItem] { json["screens"].items.map(ScreenItem.init) }
     var bundleDir: String { json["bundleDir"]?.string ?? "" }
     var bundleFiles: [String] { json["bundleFiles"].items.compactMap(\.string) }
     var codeSource: JSON { json["codeSource"] ?? .emptyObject }
-    var warnings: [String] { state["warnings"].items.map(\.jsString) }
-    var log: [JSON] { state["log"].items }
-    var feedback: [JSON] { state["feedback"].items }
-    var pendingFeedback: [JSON] { feedback.filter { $0["status"]?.string == "pending" } }
+    var warnings: [String] { projectState.warnings?.items.map(\.jsString) ?? [] }
+    var log: [JSON] { projectState.log?.items ?? [] }
+    var feedbackItems: [FeedbackItem] { projectState.feedback ?? [] }
+    var pendingFeedbackItems: [FeedbackItem] { feedbackItems.filter { $0.status == "pending" } }
     /// 文字的历史版本（新的在前）
     var contentHistory: [JSON] { json["contentHistory"].items }
     /// 上次生成后在软件外被改过的交付文件
     var externalEdits: [String] { json["externalEdits"].items.compactMap(\.string) }
-    var timing: JSON? { state["timing"].truthyValue }
-    var lastBuild: JSON? { state["lastBuild"].truthyValue }
-    func stepStatus(_ step: String) -> String { state["steps"]?[step]?["status"]?.string ?? "pending" }
-    func stepMessage(_ step: String) -> String? { state["steps"]?[step]?["message"]?.string }
+    var timing: JSON? { projectState.timing.truthyValue }
+    var lastBuild: BuildRecord? { projectState.lastBuild }
+    func stepStatus(_ step: PipelineStepName) -> StepStatus { projectState[step: step]?.status ?? .pending }
+    func stepMessage(_ step: PipelineStepName) -> String? { projectState[step: step]?.message }
+    func screenState(_ id: String) -> ScreenState? { projectState[screen: id] }
 }
 
+/// 单屏视图模型，内部建立在核心库 `ScreenState` 外壳之上。
 struct ScreenItem: Identifiable {
     let json: JSON
     init(_ json: JSON) { self.json = json }
@@ -199,14 +211,14 @@ struct ScreenItem: Identifiable {
     var file: String? { json["file"]?.string }
     var mtime: Double? { json["mtime"]?.number }
     var prompt: String { json["prompt"]?.string ?? "" }
-    var state: JSON { json["state"] ?? .emptyObject }
-    var gate: JSON? { state["gate"].truthyValue }
+    var state: ScreenState { ScreenState(json["state"] ?? .emptyObject) }
+    var gate: JSON? { state.gate.truthyValue }
     var alternates: [JSON] { json["alternates"].items }
     /// 以前用过的截图（新的在前）
     var history: [JSON] { json["history"].items }
     var plan: JSON? { json["plan"].truthyValue }
     var title: String { plan?["title"]?.jsString ?? id }
-    var warnings: [String] { (state["imageWarnings"].items + (gate?["warnings"].items ?? [])).map(\.jsString) }
+    var warnings: [String] { ((state.imageWarnings?.items ?? []) + (gate?["warnings"].items ?? [])).map(\.jsString) }
 }
 
 // MARK: - 格式化（和 Electron 版界面一致）

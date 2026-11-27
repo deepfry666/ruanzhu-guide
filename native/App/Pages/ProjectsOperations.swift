@@ -10,8 +10,8 @@ extension ProjectsView {
         for row in targets {
             if row.submitted { skipped.append("· \(row.name)（已提交，只读）") }
             else if row.historyReadOnly { skipped.append("· \(row.name)（只读的旧项目）") }
-            else if row.status == "running" { skipped.append("· \(row.name)（正在运行）") }
-            else if row.queue?["status"]?.string == "queued" { skipped.append("· \(row.name)（已经在排队）") }
+            else if row.status == .running { skipped.append("· \(row.name)（正在运行）") }
+            else if row.queueItem?.status == .queued { skipped.append("· \(row.name)（已经在排队）") }
             else { dirs.append(row.dir) }
         }
         guard !dirs.isEmpty else {

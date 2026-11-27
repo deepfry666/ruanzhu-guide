@@ -107,10 +107,10 @@ extension ProjectsView {
 
     @ViewBuilder
     func statusTag(_ row: ProjectRow) -> some View {
-        if row.status != "running", let queue = row.queue, let label = QUEUE_LABEL[queue["status"]?.string ?? ""] {
-            TagView(text: "\(label)\(queue["position"]?.int.map { " #\($0)" } ?? "")")
+        if row.status != .running, let queue = row.queueItem, let status = queue.status, let label = QUEUE_LABEL[status] {
+            TagView(text: "\(label)\(row.queuePosition.map { " #\($0)" } ?? "")")
         } else {
-            let info = PROJECT_STATUS[row.status] ?? (row.status, .neutral)
+            let info = PROJECT_STATUS[row.status] ?? (row.status.rawValue, .neutral)
             HStack(spacing: Spacing.xs) {
                 if model.codeBatch?.current == row.dir {
                     // 正在更新代码材料：一个一个处理，正在做的这个

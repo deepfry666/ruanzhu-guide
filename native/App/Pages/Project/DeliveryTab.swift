@@ -54,17 +54,18 @@ struct DeliveryTab: View {
                 }
                 if let build {
                     SettingsGroup(title: "上次生成") {
-                        SettingsRow(label: "时间") { Text(formatTime(build["at"]?.string)) }
+                        SettingsRow(label: "时间") { Text(formatTime(build.at)) }
                         SettingsRow(label: "PDF") {
-                            if build["withPdf"].isTruthy {
-                                Text("说明书 \(build["pdfPages"]?.int.map(String.init) ?? "?") 页")
-                                if let pages = build["codePdfPages"]?.int { Text("代码 \(pages) 页") }
+                            if build.withPdf == true {
+                                Text("说明书 \(build.pdfPages.map(String.init) ?? "?") 页")
+                                if let pages = build.codePdfPages { Text("代码 \(pages) 页") }
                             } else {
                                 StatusDot(kind: .warn, text: "未生成（没有 LibreOffice）")
                             }
                         }
-                        ForEach(build["pdfFonts"].fields.keys, id: \.self) { kind in
-                            let font = build["pdfFonts"]?[kind] ?? .emptyObject
+                        let pdfFonts = build.pdfFonts.fields
+                        ForEach(pdfFonts.keys, id: \.self) { kind in
+                            let font = pdfFonts[kind] ?? .emptyObject
                             SettingsRow(label: "\(FONT_DOC[kind] ?? kind)字体", info: font["fonts"].items.map(\.jsString).joined(separator: "、")) {
                                 if font["ignored"].isTruthy {
                                     StatusDot(kind: .warn, text: "\(font["intended"].text)（字体提示已忽略）")
@@ -88,14 +89,15 @@ struct DeliveryTab: View {
                             }
                         }
                         SettingsRow(label: "代码文档") {
-                            if build["withCode"].isTruthy, let codeInfo = build["code"].truthyValue {
+                            if build.withCode == true, let codeInfo = build.code.truthyValue {
                                 Text("\(codeInfo["fileCount"]?.int ?? 0) 个文件，\((codeInfo["lineCount"]?.int ?? 0).formatted()) 行")
                             } else {
                                 Text("没有")
                             }
                         }
-                        if !build["warnings"].items.isEmpty {
-                            SettingsRow(label: "提醒", hint: build["warnings"].items.map(\.jsString).joined(separator: "；"))
+                        let buildWarnings = build.warnings?.items ?? []
+                        if !buildWarnings.isEmpty {
+                            SettingsRow(label: "提醒", hint: buildWarnings.map(\.jsString).joined(separator: "；"))
                         }
                     }
                 }
@@ -123,7 +125,7 @@ struct DeliveryTab: View {
                             .disabled(running || switching)
                         }
                     }
-                    if code["source"].truthyValue == nil, oldCodeDoc, !readOnly, !data.request["allowDropCodeDoc"].isTruthy {
+                    if code["source"].truthyValue == nil, oldCodeDoc, !readOnly, !data.request.raw["allowDropCodeDoc"].isTruthy {
                         SettingsRow(label: "旧代码文档", hint: "重新生成交付包前要选一个：在上面「更换…」里选模板，或者不要代码文档") {
                             Button("不要代码文档") {
                                 Task {
@@ -138,7 +140,7 @@ struct DeliveryTab: View {
                 SettingsGroup(title: "TXT 字段", footer: "只对这个项目生效，留空用设置里的默认值（「设置 → TXT」）。") {
                     ForEach(TXT_LABELS, id: \.key) { field in
                         SettingsRow(label: field.label) {
-                            CommitTextField(placeholder: model.settings.txtFields[field.key] ?? "", value: data.request["txtFields"]?[field.key]?.string ?? "") { value in
+                            CommitTextField(placeholder: model.settings.txtFields[field.key] ?? "", value: data.request.txtFields?[field.key]?.string ?? "") { value in
                                 saveTxt(field.key, value)
                             }
                             .frame(minWidth: 160, idealWidth: 220, maxWidth: 220)
@@ -166,11 +168,11 @@ struct DeliveryTab: View {
     }
 
     func saveTxt(_ key: String, _ value: String) {
-        var next = data.request["txtFields"].fields
+        var next = data.request.txtFields.fields
         next[key] = .string(value)
         var cleaned = JSONObject()
         for (name, item) in next where !(item.string ?? "").jsTrimmed.isEmpty { cleaned[name] = item }
-        let current = data.request["txtFields"].truthyValue ?? .emptyObject
+        let current = data.request.txtFields.truthyValue ?? .emptyObject
         if JSON.object(cleaned).serialized() == current.serialized() { return }
         Task {
             await model.perform { try await model.core?.pipeline.updateRequest(data.dir, ["txtFields": cleaned.isEmpty ? .null : .object(cleaned)]) }

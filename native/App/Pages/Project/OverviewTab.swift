@@ -9,7 +9,7 @@ struct OverviewTab: View {
     @Environment(AppModel.self) private var model
 
     var disabled: Bool { running || data.readOnly }
-    var request: JSON { data.request }
+    var request: ProjectRequest { data.request }
 
     func update(_ patch: JSON) {
         Task {
@@ -43,7 +43,7 @@ struct OverviewTab: View {
     }
 
     var settingsGroup: some View {
-        let screenCount = request["screenCount"]?.int
+        let screenCount = request.screenCount
         return SettingsGroup(title: "项目设置", footer: "改截图数、重点功能或平台，下次运行会重新规划并重新生图。") {
             SettingsRow(label: "截图数") {
                 SegmentedTabs(
@@ -60,17 +60,17 @@ struct OverviewTab: View {
             }
             .disabled(disabled)
             SettingsRow(label: "重点功能") {
-                CommitTextField(placeholder: "", value: request["emphasis"].text) { update(["emphasis": .string($0)]) }
+                CommitTextField(placeholder: "", value: request.emphasis ?? "") { update(["emphasis": .string($0)]) }
                     .frame(minWidth: 160, idealWidth: 300, maxWidth: 300)
             }
             .disabled(disabled)
             SettingsRow(label: "补充说明") {
-                CommitTextField(placeholder: "", value: request["notes"].text, axis: .vertical) { update(["notes": .string($0)]) }
+                CommitTextField(placeholder: "", value: request.notes ?? "", axis: .vertical) { update(["notes": .string($0)]) }
                     .frame(minWidth: 160, idealWidth: 300, maxWidth: 300)
             }
             .disabled(disabled)
             SettingsRow(label: "截图样式", hint: "文档省略运行平台") {
-                Picker("", selection: Binding(get: { request["platform"].text }, set: { update(["platform": .string($0)]) })) {
+                Picker("", selection: Binding(get: { request.platform ?? "" }, set: { update(["platform": .string($0)]) })) {
                     Text("用设置里的默认平台").tag("")
                     ForEach(PLATFORMS, id: \.value) { Text($0.label).tag($0.value) }
                 }
@@ -85,27 +85,27 @@ struct OverviewTab: View {
         let version = detectVersion(data.name)
         return SettingsGroup {
             SettingsRow(label: "设计说明章节") {
-                Toggle("", isOn: Binding(get: { request["wantDesign"].isTruthy }, set: { update(["wantDesign": .bool($0)]) }))
+                Toggle("", isOn: Binding(get: { request.wantDesign ?? false }, set: { update(["wantDesign": .bool($0)]) }))
                     .toggleStyle(.switch)
                     .labelsHidden()
             }
             .disabled(disabled)
             SettingsRow(label: "额外禁词", info: "截图里也不能出现的词。默认已禁止：完整软件名、去掉版本号的名字\(version.map { "、版本号 \($0)" } ?? "")。", vertical: true) {
-                TokenEditor(tokens: Binding(get: { request["extraBrandTokens"].items.map(\.jsString) }, set: { update(["extraBrandTokens": JSON($0)]) }))
+                TokenEditor(tokens: Binding(get: { request.extraBrandTokens?.items.map(\.jsString) ?? [] }, set: { update(["extraBrandTokens": JSON($0)]) }))
             }
             .disabled(disabled)
             SettingsRow(label: "内容日期", hint: "截图里的「今天」；修改后重新规划、生图及撰写") {
-                CommitTextField(placeholder: localDateKey(), value: request["contentDate"].text) { update(["contentDate": .string($0)]) }
+                CommitTextField(placeholder: localDateKey(), value: request.contentDate ?? "") { update(["contentDate": .string($0)]) }
                     .frame(width: 200)
             }
             .disabled(disabled)
             SettingsRow(label: "最早日期", hint: dateRuleActive(data.state) ? "历史记录最早到 \(earliestDateOf(data.state))；留空为内容日期前 \(DEFAULT_HISTORY_DAYS) 天" : "设置内容日期后生效", info: "可填企业成立日期或开发完成日期。截图和正文里的流水、订单、动态等历史记录不会早于这一天；预约、截止等未来安排不受限。") {
-                CommitTextField(placeholder: "选填，YYYY-MM-DD", value: request["earliestDate"].text) { update(["earliestDate": .string($0)]) }
+                CommitTextField(placeholder: "选填，YYYY-MM-DD", value: request.earliestDate ?? "") { update(["earliestDate": .string($0)]) }
                     .frame(width: 200)
             }
             .disabled(disabled)
             SettingsRow(label: "编制时间", hint: "留空跟随内容日期") {
-                CommitTextField(placeholder: contentDateChinese(contentDateOf(data.state)), value: request["compileDate"].text) { update(["compileDate": .string($0)]) }
+                CommitTextField(placeholder: contentDateChinese(contentDateOf(data.state)), value: request.compileDate ?? "") { update(["compileDate": .string($0)]) }
                     .frame(width: 200)
             }
             .disabled(disabled)
@@ -121,35 +121,36 @@ struct StepsIndicator: View {
         HStack(alignment: .top, spacing: 0) {
             ForEach(Array(STEP_ORDER.enumerated()), id: \.element) { index, step in
                 let status = data.stepStatus(step)
+                let finished = status == .done || status == .skipped
                 VStack(spacing: Spacing.xs) {
                     ZStack {
-                        CheckBadge(checked: ["done", "skipped"].contains(status))
-                        if !["done", "skipped"].contains(status) { icon(status, index: index) }
+                        CheckBadge(checked: finished)
+                        if !finished { icon(status, index: index) }
                     }
-                    Text(UI_STEP_LABELS[step] ?? step).textStyle(Typography.captionStrong).foregroundStyle(status == "pending" ? Palette.textSecondary : Palette.text)
-                    if status == "skipped" {
+                    Text(UI_STEP_LABELS[step] ?? step.rawValue).textStyle(Typography.captionStrong).foregroundStyle(status == .pending ? Palette.textSecondary : Palette.text)
+                    if status == .skipped {
                         Text("不需要").textStyle(Typography.caption).foregroundStyle(Palette.textSecondary)
-                    } else if status == "review" {
+                    } else if status == .review {
                         Text("待确认").textStyle(Typography.caption).foregroundStyle(Palette.warning)
                     }
                 }
                 .frame(maxWidth: .infinity)
                 if index < STEP_ORDER.count - 1 {
-                    Rectangle().fill(["done", "skipped"].contains(status) ? Palette.success : Palette.divider).frame(height: 2).padding(.top, Spacing.md).frame(maxWidth: 40)
+                    Rectangle().fill(finished ? Palette.success : Palette.divider).frame(height: 2).padding(.top, Spacing.md).frame(maxWidth: 40)
                 }
             }
         }
     }
 
     @ViewBuilder
-    func icon(_ status: String, index: Int) -> some View {
+    func icon(_ status: StepStatus, index: Int) -> some View {
         switch status {
-        case "done", "skipped": Image(systemName: "checkmark").textStyle(Typography.captionStrong).foregroundStyle(Palette.onColor)
-        case "failed":
+        case .done, .skipped: Image(systemName: "checkmark").textStyle(Typography.captionStrong).foregroundStyle(Palette.onColor)
+        case .failed:
             Circle().fill(Palette.danger).frame(width: Spacing.xl, height: Spacing.xl)
                 .overlay { Image(systemName: "xmark").textStyle(Typography.captionStrong).foregroundStyle(Palette.onColor) }
-        case "running": ProgressView().controlSize(.mini)
-        case "review": Image(systemName: "hand.raised.fill").textStyle(Typography.caption).foregroundStyle(Palette.warning)
+        case .running: ProgressView().controlSize(.mini)
+        case .review: Image(systemName: "hand.raised.fill").textStyle(Typography.caption).foregroundStyle(Palette.warning)
         default: Text("\(index + 1)").textStyle(Typography.captionStrong).foregroundStyle(Palette.textSecondary)
         }
     }
@@ -158,6 +159,10 @@ struct StepsIndicator: View {
 /// 用时：完成用时、累计用时、每次运行和各步骤用时。
 struct TimingCard: View {
     let data: ProjectData
+
+    private static let runStatusLabels: [ProjectStatus: String] = [
+        .done: "完成", .waiting: "待确认", .canceled: "已停止", .idle: "未完",
+    ]
 
     var body: some View {
         if let timing = data.timing, timing["completedMs"]?.number != nil || timing["totalMs"]?.number != nil || !timing["runs"].items.isEmpty {
@@ -176,9 +181,9 @@ struct TimingCard: View {
                         GridRow {
                             Text(formatTime(run["startedAt"]?.string)).monospacedDigit()
                             Text(run["reason"]?.string ?? "运行")
-                            Text(["done": "完成", "waiting": "待确认", "failed": "失败", "canceled": "已停止", "idle": "未完"][run["status"]?.string ?? ""] ?? run["status"].text)
+                            Text(runStatusText(run["status"]?.string))
                             Text(formatDurationUI(run["ms"]?.number)).monospacedDigit()
-                            Text(STEP_ORDER.filter { (run["steps"]?[$0]?.number ?? 0) >= 1000 }.map { "\(UI_STEP_LABELS[$0] ?? $0) \(formatDuration(run["steps"]?[$0]?.number ?? 0))" }.joined(separator: " · ").ifEmpty("—"))
+                            Text(STEP_ORDER.filter { (run["steps"]?[$0.rawValue]?.number ?? 0) >= 1000 }.map { "\(UI_STEP_LABELS[$0] ?? $0.rawValue) \(formatDuration(run["steps"]?[$0.rawValue]?.number ?? 0))" }.joined(separator: " · ").ifEmpty("—"))
                                 .textStyle(Typography.caption)
                                 .foregroundStyle(Palette.textSecondary)
                         }
@@ -189,6 +194,12 @@ struct TimingCard: View {
                 }
             }
         }
+    }
+
+    private func runStatusText(_ raw: String?) -> String {
+        guard let raw else { return "" }
+        if raw == StepStatus.failed.rawValue { return "失败" }
+        return Self.runStatusLabels[ProjectStatus(rawValue: raw)] ?? raw
     }
 }
 
