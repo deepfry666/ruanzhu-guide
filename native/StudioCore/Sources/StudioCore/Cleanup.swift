@@ -220,7 +220,7 @@ extension StudioCore {
     /// 正在运行或在批量队列里（排队、暂停、运行中）的项目
     func busyProjectDirs() -> Set<String> {
         let active: [QueueStatus] = [.queued, .paused, .running]
-        let queued = batch.list().items.map(BatchQueueItem.init).filter { item in item.status.map(active.contains) ?? false }
+        let queued = batch.listTyped().items.filter { item in item.status.map(active.contains) ?? false }
         return Set(queued.compactMap(\.projectDir))
     }
 
@@ -229,13 +229,12 @@ extension StudioCore {
         let settings = try await settingsStore.get()
         let busy = busyProjectDirs()
         let projects: [CleanupProject] = readIndex()["projects"].items.compactMap { entry in
-            guard let dir = entry["dir"]?.string, let json = try? projectStore.read(dir) else { return nil }
-            let state = ProjectState(json)
+            guard let dir = entry["dir"]?.string, let state = try? projectStore.readTyped(dir) else { return nil }
             let name = state.request?.softwareName ?? ""
             return CleanupProject(
                 dir: dir, name: name.isEmpty ? Path.basename(dir) : name, softwareName: name,
                 busy: busy.contains(dir) || pipeline.isRunning(dir), readOnly: state.readOnly == true,
-                submitted: isSubmitted(state.raw), codeSource: state.request?.codeSource?["path"]?.string
+                submitted: isSubmitted(state), codeSource: state.request?.codeSource?["path"]?.string
             )
         }
         let scanner = CleanupScanner(workspaceDir: settings.workspaceDir, projects: projects, globalCodeSource: settings.codeSource.path, nowMs: now.timeIntervalSince1970 * 1000)

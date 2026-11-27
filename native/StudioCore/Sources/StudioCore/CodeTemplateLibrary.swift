@@ -110,7 +110,7 @@ extension StudioCore {
     func codeTemplateUsage(_ library: CodeTemplateLibrary, _ settings: Settings) -> [String: Int] {
         var usage: [String: Int] = [:]
         for item in readIndex()["projects"].items {
-            guard let dir = item["dir"]?.string, let state = try? projectStore.read(dir) else { continue }
+            guard let dir = item["dir"]?.string, let state = try? projectStore.readTyped(dir) else { continue }
             let path = codeSourceFor(state, settings).source?["path"]?.string ?? ""
             if let entry = library.entry(forPath: path) { usage[entry.id, default: 0] += 1 }
         }
@@ -143,7 +143,7 @@ extension StudioCore {
         let settings = try await settingsStore.get()
         guard let entry = settings.codeTemplates.entry(id) else { return [] }
         return readIndex()["projects"].items.compactMap { item -> String? in
-            guard let dir = item["dir"]?.string, let state = try? projectStore.read(dir) else { return nil }
+            guard let dir = item["dir"]?.string, let state = try? projectStore.readTyped(dir) else { return nil }
             return settings.codeTemplates.entry(forPath: codeSourceFor(state, settings).source?["path"]?.string ?? "")?.id == entry.id ? dir : nil
         }
     }
@@ -242,11 +242,11 @@ extension StudioCore {
     public func useCodeTemplate(_ dir: String, _ id: String) async throws -> JSON {
         let settings = try await settingsStore.get()
         guard let entry = settings.codeTemplates.entry(id), entry.enabled else { throw StudioError("请选一个启用的模板") }
-        guard let state = try projectStore.read(dir) else { throw StudioError("项目不存在") }
+        guard let state = try projectStore.readTyped(dir) else { throw StudioError("项目不存在") }
         try assertNotSubmitted(state)
-        let name = state["request"]?["softwareName"]?.jsString ?? ""
+        let name = state.request?.softwareName ?? ""
         let bundle = projectPaths(dir).bundle(name)
-        if state["lastBuild"].isTruthy, FS.exists(Path.join(bundle, "\(name)指南.txt")) {
+        if state.lastBuild?.raw.truthy == true, FS.exists(Path.join(bundle, "\(name)指南.txt")) {
             let result = await applyCodeTemplates([dir], mode: "fixed", templateId: id)
             if let message = (result["failed"].items + result["skipped"].items).first?.jsString { throw StudioError(message) }
             return .obj(["applied": true])

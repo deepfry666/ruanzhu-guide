@@ -31,8 +31,8 @@ public final class StudioCore: @unchecked Sendable {
         let emit: @Sendable (JSON) -> Void = { event in
             onEvent(event)
             // 项目在批量之外跑完了（手动继续、确认规划、人工验收……），同步批量队列里那条记录
-            if event["type"]?.string == "run-finished", event["status"]?.string == "done", let dir = event["projectDir"]?.string, let batch = batchRef.current {
-                Task { await batch.settle { $0 == dir ? "done" : nil } }
+            if event["type"]?.string == "run-finished", event["status"]?.string == ProjectStatus.done.rawValue, let dir = event["projectDir"]?.string, let batch = batchRef.current {
+                Task { await batch.settle { $0 == dir ? ProjectStatus.done.rawValue : nil } }
             }
         }
         emitEvent = emit
@@ -77,7 +77,11 @@ public final class StudioCore: @unchecked Sendable {
         pipelineRef.withLock { $0 = pipeline }
         batch = BatchQueue(dataDir: dataDir, settingsStore: settingsStore, pipeline: pipeline, emit: emit)
         batchRef.withLock { $0 = batch }
-        pipeline.isQueued = { dir in batchRef.current?.list().items.contains { $0["projectDir"]?.string == dir && ["queued", "running", "paused"].contains($0["status"].text) } ?? false }
+        pipeline.isQueued = { dir in
+            batchRef.current?.listTyped().items.contains {
+                $0.projectDir == dir && ($0.status == .queued || $0.status == .running || $0.status == .paused)
+            } ?? false
+        }
         callLog.onAppend { row in emit(.obj(["type": "call", "row": row])) }
     }
 
@@ -103,25 +107,25 @@ public final class StudioCore: @unchecked Sendable {
         return .obj(["total": .number(Double(values.count)), "finished": .number(Double(finished)), "failed": .number(Double(values.filter { $0["status"]?.string == "failed" }.count))])
     }
 
-    func queueIndex() -> [String: JSON] {
-        let items = batch.list().items
-        var map: [String: JSON] = [:]
+    func queueIndex() -> [String: (item: BatchQueueItem, position: Int?)] {
+        let items = batch.listTyped().items
+        var map: [String: (item: BatchQueueItem, position: Int?)] = [:]
         var position = 0
         for item in items {
-            let status = item["status"]?.string ?? ""
-            if status == "queued" { position += 1 }
-            let dir = item["projectDir"]?.string ?? ""
+            let status = item.status
+            if status == .queued { position += 1 }
+            let dir = item.projectDir ?? ""
             // 同一项目在队列里有多条时，以「排队/运行中」的那条为准
-            if map[dir] == nil || ["queued", "running"].contains(status) {
-                map[dir] = item.merging(.obj(["position": status == "queued" ? .number(Double(position)) : .null]))
+            if map[dir] == nil || status == .queued || status == .running {
+                map[dir] = (item, status == .queued ? position : nil)
             }
         }
         return map
     }
 
-    func summarize(_ entry: JSON, _ settings: Settings, _ queueByDir: [String: JSON]) -> JSON? {
+    func summarize(_ entry: JSON, _ settings: Settings, _ queueByDir: [String: (item: BatchQueueItem, position: Int?)]) -> JSON? {
         let dir = entry["dir"]?.jsString ?? ""
-        guard let state = try? projectStore.read(dir) else { return nil }
+        guard let state = try? projectStore.readTyped(dir) else { return nil }
         let summaryStarted = ListPerformance.now
         defer { ListPerformance.addSummary(ListPerformance.now - summaryStarted) }
         let alive = FS.exists(dir)
@@ -129,35 +133,41 @@ public final class StudioCore: @unchecked Sendable {
         let live = pipeline.getProgress(dir)
         let running = pipeline.isForegroundRunning(dir)
         var steps = JSONObject()
-        for step in PIPELINE_STEPS { steps[step] = state["steps"]?[step]?["status"] ?? "pending" }
-        let lastBuild = state["lastBuild"]
-        let timing = state["timing"]
-        let screenCount = state["screens"].fields.count
+        for step in PIPELINE_STEPS {
+            steps[step] = .string((state[step: PipelineStepName(rawValue: step)]?.status ?? .pending).rawValue)
+        }
+        let lastBuild = state.lastBuild
+        let timing = state.timing
+        let screenCount = state.screens.fields.count
         var summary = JSONObject()
         summary["dir"] = .string(dir)
-        summary["thumbnail"] = ProjectThumbnail.read(dir: dir, state: ProjectState(state))?.raw ?? .null
-        summary["name"] = state["request"]?["softwareName"] ?? .null
-        summary["origin"] = state["origin"] ?? .null
-        summary["grade"] = state["imported"]?["grade"].truthyValue ?? .null
-        summary["readOnly"] = .bool(state["readOnly"].isTruthy)
-        summary["submitted"] = state["submitted"]?["at"].truthyValue ?? .null
-        summary["status"] = !alive ? "missing" : state["readOnly"].isTruthy ? "readonly" : running ? "running" : state["status"] ?? "idle"
+        summary["thumbnail"] = ProjectThumbnail.read(dir: dir, state: state)?.raw ?? .null
+        summary["name"] = state.request?.softwareName.map(JSON.string) ?? .null
+        summary["origin"] = state.origin.map(JSON.string) ?? .null
+        summary["grade"] = state.imported?["grade"].truthyValue ?? .null
+        summary["readOnly"] = .bool(state.readOnly == true)
+        summary["submitted"] = state.submitted?["at"].truthyValue ?? .null
+        let status: ProjectStatus = !alive ? .missing : state.readOnly == true ? .readonly : running ? .running : (state.status.flatMap { $0.rawValue.isEmpty ? nil : $0 } ?? .idle)
+        summary["status"] = .string(status.rawValue)
         summary["bundleUpdating"] = .bool(pipeline.bundleActive.current.contains(dir))
         summary["steps"] = .object(steps)
-        summary["screens"] = .number(Double(screenCount > 0 ? screenCount : state["request"]?["screenCount"]?.int ?? 0))
+        summary["screens"] = .number(Double(screenCount > 0 ? screenCount : state.request?.screenCount ?? 0))
         summary["hasCodeSource"] = .bool(codeSourceFor(state, settings).source?["path"].isTruthy ?? false)
-        summary["hasBundle"] = .bool(lastBuild.isTruthy || state["origin"]?.string == "imported")
-        summary["bundleFiles"] = lastBuild?["files"]?.array.map { .number(Double($0.count)) } ?? .null
-        summary["pdfFontProblem"] = .bool(lastBuild?["pdfFonts"].fields.values.contains { $0.isObject && $0["ok"] == .bool(false) } ?? false)
+        summary["hasBundle"] = .bool((lastBuild?.raw.truthy ?? false) || state.origin == "imported")
+        summary["bundleFiles"] = lastBuild?.files?.array.map { .number(Double($0.count)) } ?? .null
+        summary["pdfFontProblem"] = .bool(lastBuild?.pdfFonts.fields.values.contains { $0.isObject && $0["ok"] == .bool(false) } ?? false)
         summary["timing"] = timing.isTruthy ? .obj(["totalMs": timing?["totalMs"] ?? .null, "completedMs": timing?["completedMs"].truthyValue ?? .null, "completedAt": timing?["completedAt"].truthyValue ?? .null, "lastMs": timing?["runs"]?.array?.last?["ms"].truthyValue ?? .null]) : .null
-        summary["queue"] = queued.map { .obj(["id": $0["id"], "status": $0["status"], "position": $0["position"] ?? .null, "error": $0["error"].truthyValue ?? .null]) } ?? .null
+        summary["queue"] = queued.map {
+            let err = $0.item.error.flatMap { $0.isEmpty ? nil : JSON.string($0) } ?? .null
+            return .obj(["id": $0.item.id.map(JSON.string), "status": $0.item.status.map { .string($0.rawValue) }, "position": JSON.orNull($0.position), "error": err])
+        } ?? .null
         summary["progress"] = live.map { .obj(["step": $0["step"], "started": $0["started"], "stepStarted": $0["stepStarted"], "screens": summarizeScreens($0["screens"]), "detail": $0["detail"]]) } ?? .null
-        summary["feedbackPending"] = .number(Double(state["feedback"].items.filter { $0["status"]?.string == "pending" }.count))
-        summary["lastBuildAt"] = lastBuild?["at"].truthyValue ?? .null
-        summary["lastError"] = state["lastError"].truthyValue ?? .null
-        summary["warnings"] = .number(Double(state["warnings"].items.count))
+        summary["feedbackPending"] = .number(Double((state.feedback ?? []).filter { $0.status == "pending" }.count))
+        summary["lastBuildAt"] = lastBuild?.at.flatMap { $0.isEmpty ? nil : JSON.string($0) } ?? .null
+        summary["lastError"] = state.lastError.flatMap { $0.isEmpty ? nil : JSON.string($0) } ?? .null
+        summary["warnings"] = .number(Double(state.warnings.items.count))
         summary["addedAt"] = entry["addedAt"] ?? .null
-        summary["updatedAt"] = state["log"]?.array?.last?["at"] ?? entry["addedAt"] ?? .null
+        summary["updatedAt"] = state.log?.array?.last?["at"] ?? entry["addedAt"] ?? .null
         return .object(summary)
     }
 
@@ -346,7 +356,7 @@ public final class StudioCore: @unchecked Sendable {
     public func stepEstimates() -> [String: Double] { pipeline.stepEstimates() }
 
     public func getProject(_ dir: String) async throws -> JSON {
-        guard let state = try projectStore.read(dir) else { throw StudioError("项目不存在") }
+        guard let state = try projectStore.readTyped(dir) else { throw StudioError("项目不存在") }
         let plan = try? readPlan(dir)
         let content = FS.readJSONQuiet(projectPaths(dir).content)
         let paths = projectPaths(dir)
@@ -365,19 +375,19 @@ public final class StudioCore: @unchecked Sendable {
                 "file": mtime != nil ? .string(file) : .null,
                 "mtime": JSON.orNull(mtime),
                 "prompt": .string(FS.readTextIfExists(paths.promptFile(id)) ?? ""),
-                "state": state["screens"]?[id] ?? .emptyObject,
+                "state": state[screen: id]?.raw ?? .emptyObject,
                 "alternates": .array(listAlternates(dir, id)),
                 "history": .array(screenHistory(dir, id)),
                 "plan": (plan ?? nil)?["screens"].items.first { $0["id"]?.string == id } ?? .null,
             ]))
         }
-        let name = state["request"]?["softwareName"]?.jsString ?? ""
+        let name = state.request?.softwareName ?? ""
         let bundleDir = paths.bundle(name)
         let bundleFiles = (FS.list(bundleDir) ?? []).filter { !$0.hasPrefix(".") }.sorted()
         let settings = try await settingsStore.get()
         let code = codeSourceFor(state, settings)
         return .obj([
-            "dir": .string(dir), "state": state.merging(.obj(["bundleUpdating": .bool(pipeline.bundleActive.current.contains(dir))])), "plan": (plan ?? nil) ?? .null, "content": content ?? .null, "screens": .array(screens),
+            "dir": .string(dir), "state": state.raw.merging(.obj(["bundleUpdating": .bool(pipeline.bundleActive.current.contains(dir))])), "plan": (plan ?? nil) ?? .null, "content": content ?? .null, "screens": .array(screens),
             "bundleDir": .string(bundleDir), "bundleFiles": JSON(bundleFiles), "running": .bool(pipeline.isForegroundRunning(dir)), "progress": pipeline.getProgress(dir) ?? .null,
             "codeSource": .obj([
                 "source": code.source ?? .null, "locked": .bool(code.locked), "global": settings.codeSource.path.isEmpty ? .null : settings.codeSource.json,
@@ -392,15 +402,16 @@ public final class StudioCore: @unchecked Sendable {
     /// request：{ softwareName, screenCount, emphasis, notes, platform, wantDesign, versionPolicy?, workspaceDir? }
     public func createProject(_ request: JSON) async throws -> String {
         let settings = try await settingsStore.get()
-        let softwareName = request["softwareName"].text.jsTrimmed
+        let req = ProjectRequest(request)
+        let softwareName = (req.softwareName ?? "").jsTrimmed
         try assertSafeSoftwareName(softwareName)
         let workspace = request["workspaceDir"].truthyValue?.jsString ?? settings.workspaceDir
         let dir = Path.join(workspace, softwareName)
         if projectStore.exists(dir) { throw StudioError("已经有「\(softwareName)」这个项目了，可以在项目列表里找到它") }
         if FS.exists(dir), inspectProject(dir) != nil { throw StudioError("工作区里已经有「\(softwareName)」这个项目，请用「导入历史项目」或换个名字") }
-        let contentDate = request["contentDate"].text.jsTrimmed
+        let contentDate = (req.contentDate ?? "").jsTrimmed
         if !contentDate.isEmpty && !validContentDate(contentDate) { throw StudioError("内容日期请填写有效的 YYYY-MM-DD 日期") }
-        let earliestDate = request["earliestDate"].text.jsTrimmed
+        let earliestDate = (req.earliestDate ?? "").jsTrimmed
         if !earliestDate.isEmpty && !validContentDate(earliestDate) { throw StudioError("最早日期请填写有效的 YYYY-MM-DD 日期，或留空") }
         if !earliestDate.isEmpty, earliestDate > (contentDate.isEmpty ? localDateKey() : contentDate) { throw StudioError("最早日期不能晚于内容日期") }
         try FS.mkdirp(dir)
@@ -419,21 +430,21 @@ public final class StudioCore: @unchecked Sendable {
             if let entry { codeSource = codeSourceJSON(dataDir, entry) }
         }
         // 版本号自动判断
-        let versionPolicy = request["versionPolicy"]?.string == "separate-metadata" ? "separate-metadata" : detectVersion(softwareName) != nil ? "in-name" : "none"
-        var fields = request
-        fields["softwareName"] = .string(softwareName)
-        fields["versionPolicy"] = .string(versionPolicy)
-        fields["codeSource"] = codeSource
-        fields["codeTemplateId"] = nil
-        if !codeSource.isNull { fields["codeSourceLocked"] = true }
-        fields["workspaceDir"] = nil
-        fields["contentDate"] = .string(contentDate.isEmpty ? localDateKey() : contentDate)
-        fields["earliestDate"] = .string(earliestDate)
-        fields["createdAt"] = request["createdAt"].truthyValue ?? .string(localDateKey())
+        let versionPolicy = req.versionPolicy == "separate-metadata" ? "separate-metadata" : detectVersion(softwareName) != nil ? "in-name" : "none"
+        var fields = req
+        fields.softwareName = softwareName
+        fields.versionPolicy = versionPolicy
+        fields.codeSource = codeSource
+        fields.raw["codeTemplateId"] = nil
+        if !codeSource.isNull { fields.codeSourceLocked = true }
+        fields.raw["workspaceDir"] = nil
+        fields.contentDate = contentDate.isEmpty ? localDateKey() : contentDate
+        fields.earliestDate = earliestDate
+        fields.createdAt = (req.createdAt?.isEmpty == false ? req.createdAt : nil) ?? localDateKey()
         // 1.6.0 起新建的项目：生图提示词加内容红线（旧项目不加，免得截图全部重生）
-        fields["policyVersion"] = 2
-        let state = newState(fields)
-        try await projectStore.write(dir, state)
+        fields.policyVersion = 2
+        let state = ProjectState(newState(fields.raw))
+        try await projectStore.writeTyped(dir, state)
         let addedAt = isoNow()
         try await updateIndex { projects in
             if !projects.contains(where: { $0["dir"]?.string == dir }) { projects.insert(.obj(["dir": .string(dir), "addedAt": .string(addedAt), "origin": "created"]), at: 0) }
@@ -503,17 +514,17 @@ public final class StudioCore: @unchecked Sendable {
     /// 返回有冲突的那些：{ name, dir, kind: project|folder, canRegenerate, reason, lastBuildAt }
     public func nameConflicts(_ names: [String]) async throws -> [JSON] {
         let workspace = try await settingsStore.get().workspaceDir
-        let busy = Set(batch.list().items.filter { ["queued", "paused", "running"].contains($0["status"]?.string ?? "") }.compactMap { $0["projectDir"]?.string })
+        let busy = Set(batch.listTyped().items.filter { $0.status == .queued || $0.status == .paused || $0.status == .running }.compactMap(\.projectDir))
         var result: [JSON] = []
         for name in uniqued(names.map(\.jsTrimmed).filter { !$0.isEmpty }) {
             let dir = Path.join(workspace, name)
-            if let state = try? projectStore.read(dir) {
+            if let state = try? projectStore.readTyped(dir) {
                 let reason: String? = isSubmitted(state) ? "已提交，只读"
                     : pipeline.isRunning(dir) || busy.contains(dir) ? "正在运行或排队"
                     : nil
                 result.append(.obj([
                     "name": .string(name), "dir": .string(dir), "kind": "project", "canRegenerate": .bool(reason == nil),
-                    "reason": JSON.orNull(reason), "lastBuildAt": state["lastBuild"]?["at"] ?? .null,
+                    "reason": JSON.orNull(reason), "lastBuildAt": state.lastBuild?.at.map(JSON.string) ?? .null,
                 ]))
             } else if FS.exists(dir), inspectProject(dir) != nil {
                 result.append(.obj(["name": .string(name), "dir": .string(dir), "kind": "folder", "canRegenerate": false, "reason": "工作区里有这个文件夹，但不在项目列表里，可以先用「导入历史项目」"]))
@@ -524,24 +535,25 @@ public final class StudioCore: @unchecked Sendable {
 
     /// 整个重新生成：沿用项目原来的屏数、重点、补充说明、平台和最早日期，内容日期按今天。
     public func regenerateProject(_ dir: String) async throws {
-        guard let state = try projectStore.read(dir) else { throw StudioError("项目不存在") }
-        let request = state["request"] ?? .emptyObject
+        guard let state = try projectStore.readTyped(dir) else { throw StudioError("项目不存在") }
+        let request = state.request
         try await regenerateProject(dir, .obj([
-            "screenCount": request["screenCount"] ?? .null, "emphasis": request["emphasis"] ?? "", "notes": request["notes"] ?? "",
-            "platform": request["platform"] ?? "", "wantDesign": request["wantDesign"] ?? false, "contentDate": "", "earliestDate": request["earliestDate"] ?? "",
+            "screenCount": JSON.orNull(request?.screenCount), "emphasis": .string(request?.emphasis ?? ""), "notes": .string(request?.notes ?? ""),
+            "platform": .string(request?.platform ?? ""), "wantDesign": .bool(request?.wantDesign == true), "contentDate": "", "earliestDate": .string(request?.earliestDate ?? ""),
         ]))
     }
 
     /// 重新生成一个已经做过的项目：旧的规划、截图、提示词、说明先归档，按这次填的设置从头重做。
     /// 代码来源保持原样；交付包在重新出包时按原来的规则自动归档。已提交或正在运行的不能重新生成。
     public func regenerateProject(_ dir: String, _ request: JSON) async throws {
-        guard let state = try projectStore.read(dir) else { throw StudioError("项目不存在") }
+        guard let state = try projectStore.readTyped(dir) else { throw StudioError("项目不存在") }
         try assertNotSubmitted(state)
-        let queued = batch.list().items.contains { $0["projectDir"]?.string == dir && ["queued", "paused", "running"].contains($0["status"]?.string ?? "") }
+        let queued = batch.listTyped().items.contains { $0.projectDir == dir && ($0.status == .queued || $0.status == .paused || $0.status == .running) }
         if pipeline.isRunning(dir) || queued { throw StudioError("正在运行或排队，不能重新生成") }
-        let contentDate = request["contentDate"].text.jsTrimmed
+        let reqInput = ProjectRequest(request)
+        let contentDate = (reqInput.contentDate ?? "").jsTrimmed
         if !contentDate.isEmpty && !validContentDate(contentDate) { throw StudioError("内容日期请填写有效的 YYYY-MM-DD 日期") }
-        let earliestDate = request["earliestDate"].text.jsTrimmed
+        let earliestDate = (reqInput.earliestDate ?? "").jsTrimmed
         if !earliestDate.isEmpty && !validContentDate(earliestDate) { throw StudioError("最早日期请填写有效的 YYYY-MM-DD 日期，或留空") }
         if !earliestDate.isEmpty, earliestDate > (contentDate.isEmpty ? localDateKey() : contentDate) { throw StudioError("最早日期不能晚于内容日期") }
 
@@ -553,12 +565,17 @@ public final class StudioCore: @unchecked Sendable {
             try FS.mkdirp(archive)
             for path in existing { try FS.copy(path, Path.join(archive, Path.basename(path))) }
         }
-        try await projectStore.update(dir) { state in
-            for key in ["screenCount", "emphasis", "notes", "platform", "wantDesign"] { state["request"]?[key] = request[key] ?? .null }
-            state["request"]?["contentDate"] = .string(contentDate.isEmpty ? localDateKey() : contentDate)
-            state["request"]?["earliestDate"] = .string(earliestDate)
-            let policy = state["request"]?["policyVersion"]?.int ?? 0
-            state["request"]?["policyVersion"] = .number(Double(max(policy, 2)))
+        try await projectStore.updateTyped(dir) { state in
+            var req = state.request ?? ProjectRequest(.emptyObject)
+            if let count = reqInput.screenCount, count != 0 { req.screenCount = count } else { req.raw["screenCount"] = .null }
+            req.emphasis = reqInput.emphasis ?? ""
+            req.notes = reqInput.notes ?? ""
+            req.platform = reqInput.platform ?? ""
+            req.wantDesign = reqInput.wantDesign ?? false
+            req.contentDate = contentDate.isEmpty ? localDateKey() : contentDate
+            req.earliestDate = earliestDate
+            req.policyVersion = max(req.policyVersion ?? 0, 2)
+            state.request = req
             appendLog(&state, existing.isEmpty ? "重新生成：从头再做" : "重新生成：旧的规划、截图、说明已归档到 archive/\(Path.basename(archive))，从头再做")
         }
         await batch.enqueue([dir], name: "重新生成", mode: "redo")
@@ -569,7 +586,7 @@ public final class StudioCore: @unchecked Sendable {
     public func setSubmitted(_ dirs: [String], _ submitted: Bool) async throws -> (changed: [String], skipped: [String]) {
         var changed: [String] = []
         var skipped: [String] = []
-        let queued = Set(batch.list().items.filter { ["queued", "paused", "running"].contains($0["status"]?.string ?? "") }.compactMap { $0["projectDir"]?.string })
+        let queued = Set(batch.listTyped().items.filter { $0.status == .queued || $0.status == .paused || $0.status == .running }.compactMap(\.projectDir))
         let at = isoNow()
         for dir in uniqued(dirs) {
             if submitted, pipeline.isRunning(dir) || queued.contains(dir) {
@@ -577,8 +594,8 @@ public final class StudioCore: @unchecked Sendable {
                 continue
             }
             guard projectStore.exists(dir) else { skipped.append("\(Path.basename(dir))：项目不存在"); continue }
-            try await projectStore.update(dir) { state in
-                state["submitted"] = submitted ? .obj(["at": .string(at)]) : nil
+            try await projectStore.updateTyped(dir) { state in
+                state.submitted = submitted ? .obj(["at": .string(at)]) : nil
                 appendLog(&state, submitted ? "标记为已提交（只读）" : "取消已提交")
             }
             changed.append(dir)
@@ -594,8 +611,9 @@ public final class StudioCore: @unchecked Sendable {
             let settings = try await settingsStore.get()
             let target = Path.resolve(dir)
             // 只读项目（比如 skill 自带的示例）的文件夹不是这个软件的，不删
-            if (try? projectStore.read(dir))??["readOnly"].isTruthy == true { throw StudioError("只读项目的文件夹不能删除，只能从列表移除") }
-            if isSubmitted((try? projectStore.read(dir)) ?? nil) { throw StudioError("已提交的项目文件夹不能删除，只能从列表移除；要删除请先取消已提交") }
+            let current = try? projectStore.readTyped(dir)
+            if current?.readOnly == true { throw StudioError("只读项目的文件夹不能删除，只能从列表移除") }
+            if isSubmitted(current) { throw StudioError("已提交的项目文件夹不能删除，只能从列表移除；要删除请先取消已提交") }
             // 防止误删工作区、主目录这类上层文件夹，以及不像项目的文件夹
             let protected = [settings.workspaceDir, NSHomeDirectory(), Path.join(NSHomeDirectory(), "Desktop"), Path.join(NSHomeDirectory(), "Documents"), Path.join(NSHomeDirectory(), "Downloads"), "/"].map(Path.resolve)
             let markers = ["content.json", "screen-plan.json", "project-manifest.json", "generation-record.json", "screens"]
@@ -606,8 +624,8 @@ public final class StudioCore: @unchecked Sendable {
             }
             try trashItem(target)
         }
-        for item in batch.list().items where item["projectDir"]?.string == dir {
-            await batch.remove(item["id"]?.string ?? "")
+        for item in batch.listTyped().items where item.projectDir == dir {
+            await batch.remove(item.id ?? "")
         }
         try await updateIndex { $0.removeAll { $0["dir"]?.string == dir } }
         await projectStore.remove(dir)
@@ -626,9 +644,9 @@ public final class StudioCore: @unchecked Sendable {
             do {
                 if projectStore.exists(dir) { continue }
                 guard let info = inspectProject(dir) else { throw StudioError("不是项目文件夹") }
-                let state = try createImportedState(dir, info)
-                try await projectStore.write(dir, state)
-                if !state["readOnly"].isTruthy { try await pipeline.adoptImported(dir) }
+                let state = ProjectState(try createImportedState(dir, info))
+                try await projectStore.writeTyped(dir, state)
+                if state.readOnly != true { try await pipeline.adoptImported(dir) }
                 let addedAt = isoNow()
                 try await updateIndex { projects in
                     if !projects.contains(where: { $0["dir"]?.string == dir }) { projects.append(.obj(["dir": .string(dir), "addedAt": .string(addedAt), "origin": "imported"])) }
@@ -642,15 +660,15 @@ public final class StudioCore: @unchecked Sendable {
     }
 
     public func renameSoftware(_ dir: String, _ newName: String) async throws -> String {
-        try assertNotSubmitted(try projectStore.read(dir))
+        guard let state = try projectStore.readTyped(dir) else { throw StudioError("项目不存在") }
+        try assertNotSubmitted(state)
         let name = newName.jsTrimmed
         try assertSafeSoftwareName(name)
         if pipeline.isRunning(dir) { throw StudioError("项目正在运行，先停止") }
-        if batch.list().items.contains(where: { $0["projectDir"]?.string == dir && ["queued", "running"].contains($0["status"]?.string ?? "") }) {
+        if batch.listTyped().items.contains(where: { $0.projectDir == dir && ($0.status == .queued || $0.status == .running) }) {
             throw StudioError("项目还在批量队列里，先从队列移除再改名")
         }
-        guard let state = try projectStore.read(dir) else { throw StudioError("项目不存在") }
-        let oldName = state["request"]?["softwareName"]?.jsString ?? ""
+        let oldName = state.request?.softwareName ?? ""
         if oldName == name { return dir }
         try await pipeline.updateRequest(dir, .obj(["softwareName": .string(name)]))
         // 文件夹名和软件名一致时，一并改名
@@ -759,8 +777,8 @@ public final class StudioCore: @unchecked Sendable {
     /// 把交付包打成 zip，放在项目文件夹里。
     public func zipBundle(_ dir: String) async throws -> String {
         try await ensureBundleCurrent(dir)
-        guard let state = try projectStore.read(dir) else { throw StudioError("项目不存在") }
-        let name = state["request"]?["softwareName"]?.jsString ?? ""
+        guard let state = try projectStore.readTyped(dir) else { throw StudioError("项目不存在") }
+        let name = state.request?.softwareName ?? ""
         let bundleDir = projectPaths(dir).bundle(name)
         var zip = ZipWriter()
         zip.addDirectory("\(name)/")
@@ -775,8 +793,9 @@ public final class StudioCore: @unchecked Sendable {
     // MARK: - 批量
 
     public func batchRemoveProjects(_ dirs: [String]) async {
-        for item in batch.list().items where dirs.contains(item["projectDir"]?.string ?? "") && ["queued", "paused", "failed", "needs-attention"].contains(item["status"]?.string ?? "") {
-            await batch.remove(item["id"]?.string ?? "")
+        let removable: [QueueStatus] = [.queued, .paused, .failed, .needsAttention]
+        for item in batch.listTyped().items where dirs.contains(item.projectDir ?? "") && item.status.map(removable.contains) == true {
+            await batch.remove(item.id ?? "")
         }
     }
 
@@ -789,7 +808,12 @@ public final class StudioCore: @unchecked Sendable {
         let since = days.map { Calendar.current.date(byAdding: .day, value: -($0 - 1), to: Calendar.current.startOfDay(for: Date()))!.timeIntervalSince1970 * 1000 }
         return UsageStats.compute(imageCalls: callLog.all(), llmCalls: llmLog.all(), projects: try await listProjects(), sinceMs: since)
     }
-    public func pendingJobs() -> [JSON] { ledger.list { ["needs-attention", "interrupted"].contains($0["state"]?.string ?? "") } }
+    public func pendingJobs() -> [JSON] {
+        ledger.list { raw in
+            let job = ImageJob(raw)
+            return job.state == "needs-attention" || job.state == "interrupted"
+        }
+    }
     public func dismissJob(_ jobId: String) async { await ledger.dismiss(jobId) }
 
     /// 启动时：清理一天前失败构建留下的临时文件夹，续查异步任务，恢复批量队列。
@@ -810,7 +834,7 @@ public final class StudioCore: @unchecked Sendable {
         await batch.initialize()
         // 上次关软件前已经手动处理完的项目
         let projectStore = self.projectStore
-        await batch.settle { dir in (try? projectStore.read(dir))??["status"]?.string }
+        await batch.settle { dir in (try? projectStore.readTyped(dir))?.status?.rawValue }
         for entry in readIndex()["projects"].items {
             if let dir = entry["dir"]?.string { await pipeline.scheduleBundleUpdate(dir) }
         }

@@ -10,18 +10,18 @@ extension StudioCore {
     public func organizeBatchEdit(_ dir: String, text: String? = nil) async -> JSON {
         let name = Path.basename(dir)
         func skip(_ reason: String) -> JSON { .obj(["dir": .string(dir), "name": .string(name), "ok": false, "reason": .string(reason)]) }
-        guard let state = try? projectStore.read(dir) else { return skip("项目不存在") }
+        guard let state = try? projectStore.readTyped(dir) else { return skip("项目不存在") }
         if isSubmitted(state) { return skip("已提交，只读") }
-        if state["readOnly"].isTruthy { return skip("只有交付包的历史项目，不能改") }
-        let busy = batch.list().items.contains { $0["projectDir"]?.string == dir && ["queued", "paused", "running"].contains($0["status"]?.string ?? "") }
+        if state.readOnly == true { return skip("只有交付包的历史项目，不能改") }
+        let busy = batch.listTyped().items.contains { $0.projectDir == dir && ($0.status == .queued || $0.status == .paused || $0.status == .running) }
         if pipeline.isRunning(dir) || busy { return skip("正在运行或排队") }
         if (try? readPlan(dir)) == nil { return skip("还没有界面规划") }
         do {
-            let item: JSON?
-            if let text { item = try await pipeline.addFeedback(dir, text) }
+            let item: FeedbackItem?
+            if let text { item = FeedbackItem(try await pipeline.addFeedback(dir, text)) }
             else { item = nil }
             let plan = try await pipeline.analyzeFeedback(dir)
-            return .obj(["dir": .string(dir), "name": .string(state["request"]?["softwareName"]?.jsString ?? name), "ok": true, "feedbackId": item?["id"] ?? .null, "plan": plan])
+            return .obj(["dir": .string(dir), "name": .string(state.request?.softwareName ?? name), "ok": true, "feedbackId": item?.id.map(JSON.string) ?? .null, "plan": plan])
         } catch {
             return skip(messageOf(error))
         }

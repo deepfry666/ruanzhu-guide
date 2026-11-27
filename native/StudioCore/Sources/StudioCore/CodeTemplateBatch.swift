@@ -135,13 +135,13 @@ extension StudioCore {
             }
             for (index, dir) in dirs.enumerated() {
                 emit(.obj(["type": "code-template-batch", "current": .string(dir), "index": .number(Double(index)), "total": .number(Double(dirs.count))]))
-                let queued = batch.list().items.contains { $0["projectDir"]?.string == dir && ["queued", "paused", "running"].contains($0["status"]?.string ?? "") }
+                let queued = batch.listTyped().items.contains { $0.projectDir == dir && ($0.status == .queued || $0.status == .paused || $0.status == .running) }
                 if queued || pipeline.isRunning(dir) {
                     skipped.append("\(Path.basename(dir))：正在运行或排队，请完成或移出队列后重试")
                     report(dir, "skipped", "正在运行或排队")
                     continue
                 }
-                guard let state = try? projectStore.read(dir) else { failed.append("\(Path.basename(dir))：项目不存在"); report(dir, "failed", "项目不存在"); continue }
+                guard let state = try? projectStore.readTyped(dir) else { failed.append("\(Path.basename(dir))：项目不存在"); report(dir, "failed", "项目不存在"); continue }
                 if isSubmitted(state) {
                     skipped.append("\(Path.basename(dir))：已提交，只读")
                     report(dir, "skipped", "已提交，只读")
@@ -222,13 +222,13 @@ extension Pipeline {
             let handle = RunHandle(cancellable: false)
             let job = Task<JSON, Error> { try await self.replaceCodeTemplate(dir, source: source, template: template, fontPlan: fontPlan) }
             handle.task = Task {
-                do { _ = try await job.value; return RunResult(status: "done") }
+                do { _ = try await job.value; return RunResult(status: ProjectStatus.done.rawValue) }
                 catch { return RunResult(status: "failed", error: messageOf(error)) }
             }
             table[dir] = handle
             return (handle, job)
         }
-        emit(.obj(["type": "project", "projectDir": .string(dir), "status": "running"]))
+        emit(.obj(["type": "project", "projectDir": .string(dir), "status": .string(ProjectStatus.running.rawValue)]))
         defer {
             running.withLock { if $0[dir] === handle { $0[dir] = nil } }
             emit(.obj(["type": "project", "projectDir": .string(dir)]))
@@ -237,7 +237,7 @@ extension Pipeline {
     }
 
     private func replaceCodeTemplate(_ dir: String, source: JSON, template: CodeWordTemplate, fontPlan: [String: FontPlanEntry]) async throws -> JSON {
-        guard let state = try projectStore.read(dir) else { throw StudioError("项目不存在") }
+        guard let state = try projectStore.readTyped(dir) else { throw StudioError("项目不存在") }
         let name = softwareName(state)
         try assertSafeSoftwareName(name)
         let paths = projectPaths(dir)
@@ -263,8 +263,8 @@ extension Pipeline {
         let txtName = "\(name)指南.txt"
         let txt = try FS.readText(Path.join(bundle, txtName))
         var fields = operationSettings.txtFields
-        for (key, value) in state["request"]?["txtFields"].fields ?? JSONObject() { fields[key] = value.jsString }
-        if !(state["request"]?["txtFields"]?["language"].isTruthy ?? false) { fields["language"] = "JAVA" }
+        for (key, value) in state.request?.txtFields.fields ?? JSONObject() { fields[key] = value.jsString }
+        if !(state.request?.txtFields?["language"].isTruthy ?? false) { fields["language"] = "JAVA" }
         let newTxt = try rewriteGuideTxtHeader(txt, fields: fields)
         try FS.write(Path.join(stagedBundle, txtName), newTxt)
         let at = isoNow()
@@ -283,6 +283,7 @@ extension Pipeline {
         let files = (FS.list(bundle) ?? []).filter { !$0.hasPrefix(".") }
         let allFiles = uniqued(files + ["\(codeName).docx", "\(codeName).pdf"])
         let result: JSON = ["files": JSON(allFiles), "codePdfPages": 60, "withCode": true, "codeSha256": .string(bodySha), "code": ["fileCount": 1, "lineCount": .number(Double(lines)), "nonEmptyLines": .number(Double(nonEmpty)), "estimatedPages": 60], "warnings": JSON(warning.map { [$0] } ?? []), "pdfFonts": ["code": fonts.summary], "codePagination": pagination]
+        let resultRecord = BuildRecord(result)
 
         // 所有生成与页数验收均在替换之前完成。保留可恢复的旧材料；写入失败恢复原字节。
         let modifiedFiles = [Path.join(bundle, "\(codeName).docx"), Path.join(bundle, "\(codeName).pdf"), Path.join(bundle, txtName), paths.manifest, recordPath(dir), paths.regionIndex, projectStore.stateFile(dir)]
@@ -302,28 +303,30 @@ extension Pipeline {
                 record["codeSource"] = source.merging(["fileCount": 1, "lineCount": .number(Double(lines)), "nonEmptyLines": .number(Double(nonEmpty)), "sha256": .string(bodySha), "templateSha256": .string(template.sha256), "usedAt": .string(at)])
                 record.append("history", .obj(["event": "code-template-updated", "at": .string(at), "codeSource": source, "codePdfPages": 60, "lineCount": .number(Double(lines)), "nonEmptyLines": .number(Double(nonEmpty)), "archive": .string(archive)]))
             }
-            try await update(dir) { draft in
-                if draft["request"] == nil { draft["request"] = .emptyObject }
-                draft["request"]?["codeSource"] = source
-                draft["request"]?["codeSourceLocked"] = true
-                var build = draft["lastBuild"].or(.emptyObject)
-                build = build.merging(result)
-                build["at"] = .string(at)
-                build["bundleDir"] = .string(bundle)
-                build["pdfFonts"] = draft["lastBuild"]?["pdfFonts"].or(.emptyObject).merging(["code": fonts.summary]) ?? ["code": fonts.summary]
-                let oldWarnings = draft["lastBuild"]?["warnings"].items.filter { !$0.jsString.contains("代码 PDF 字体不对") } ?? []
-                build["warnings"] = .array(oldWarnings + result["warnings"].items)
+            try await updateState(dir) { draft in
+                var req = draft.request ?? ProjectRequest(.emptyObject)
+                req.codeSource = source
+                req.codeSourceLocked = true
+                draft.request = req
+                let previousBuild = draft.lastBuild
+                var build = BuildRecord((previousBuild?.raw.or(.emptyObject) ?? .emptyObject).merging(result))
+                build.at = at
+                build.bundleDir = bundle
+                build.pdfFonts = previousBuild?.pdfFonts.or(.emptyObject).merging(["code": fonts.summary]) ?? ["code": fonts.summary]
+                let oldWarnings = previousBuild?.warnings.items.filter { !$0.jsString.contains("代码 PDF 字体不对") } ?? []
+                build.warnings = .array(oldWarnings + resultRecord.warnings.items)
                 // 代码文档是软件自己换的，更新指纹，免得下次误以为是在软件外改的
-                if build["bundleHashes"].isTruthy { build["bundleHashes"] = refreshBundleHashes(build, dir, draft["request"]?["softwareName"]?.jsString ?? "", files: ["\(codeName).docx", txtName]) }
-                draft["lastBuild"] = build
-                draft["codeTemplateUpdatedAt"] = .string(at)
-                draft["warnings"] = .array(draft["warnings"].items.filter { warning in
+                if build.bundleHashes.isTruthy { build.bundleHashes = refreshBundleHashes(build, dir, draft.request?.softwareName ?? "", files: ["\(codeName).docx", txtName]) }
+                draft.lastBuild = build
+                draft.codeTemplateUpdatedAt = at
+                draft.warnings = .array(draft.warnings.items.filter { warning in
                     let text = warning.jsString
                     return !text.contains("代码文档来自旧 skill 内置的固定正文") && !text.contains("代码 PDF 字体不对")
-                } + result["warnings"].items.map { .string("构建：\($0.jsString)") })
-                if draft["steps"]?["build"]?["status"]?.string == "done", let hash = self.stepInputHash("build", dir, draft, operationSettings) {
-                    draft["steps"]?["build"]?["inputHash"] = .string(hash)
-                    draft["steps"]?["build"]?["finishedAt"] = .string(at)
+                } + resultRecord.warnings.items.map { .string("构建：\($0.jsString)") })
+                if var buildStep = draft[step: .build], buildStep.status == .done, let hash = self.stepInputHash(.build, dir, draft, operationSettings) {
+                    buildStep.inputHash = hash
+                    buildStep.finishedAt = at
+                    draft[step: .build] = buildStep
                 }
                 appendLog(&draft, "代码材料更新完成：\(template.paginationDescription)；旧材料已归档")
             }

@@ -1,5 +1,9 @@
 import Foundation
 
+private extension BatchQueueItem {
+    mutating func clearError() { raw["error"] = .null }
+}
+
 /// 批量队列：按设置的项目并发数依次跑完整流程；软件重启后，之前「运行中」的项目回到队列续跑。
 public final class BatchQueue: @unchecked Sendable {
     let file: String
@@ -7,7 +11,7 @@ public final class BatchQueue: @unchecked Sendable {
     let pipeline: Pipeline
     let emit: @Sendable (JSON) -> Void
     private let serial = SerialQueue()
-    private let state = Locked<(items: [JSON], paused: Bool, loaded: Bool)>(([], false, false))
+    private let state = Locked<(items: [BatchQueueItem], paused: Bool, loaded: Bool)>(([], false, false))
     private let active = Locked<Set<String>>([])
     private let pumpLock = SerialQueue()
 
@@ -22,8 +26,10 @@ public final class BatchQueue: @unchecked Sendable {
         state.withLock { current in
             guard !current.loaded else { return }
             let stored = FS.readJSONQuiet(file) ?? .emptyObject
-            current.items = stored["items"].items.map { item in
-                item["status"]?.string == "running" ? item.merging(["status": "queued"]) : item
+            current.items = stored["items"].items.map { raw in
+                var item = BatchQueueItem(raw)
+                if item.status == .running { item.status = .queued }
+                return item
             }
             current.paused = stored["paused"].isTruthy
             current.loaded = true
@@ -31,19 +37,19 @@ public final class BatchQueue: @unchecked Sendable {
     }
 
     private func persist() async {
-        let snapshot = state.withLock { JSON.obj(["items": .array($0.items), "paused": .bool($0.paused)]) }
+        let snapshot = state.withLock { JSON.obj(["items": .array($0.items.map(\.raw)), "paused": .bool($0.paused)]) }
         let file = self.file
         _ = try? await serial.run { try FS.writeJSONAtomic(file, snapshot) }
     }
 
     private func notify() {
-        let snapshot = state.withLock { (items: $0.items, paused: $0.paused) }
+        let snapshot = state.withLock { (items: $0.items.map(\.raw), paused: $0.paused) }
         emit(.obj(["type": "batch", "items": .array(snapshot.items), "paused": .bool(snapshot.paused)]))
     }
 
-    private func mutate(_ id: String, _ body: (inout JSON) -> Void) {
+    private func mutate(_ id: String, _ body: (inout BatchQueueItem) -> Void) {
         state.withLock { current in
-            if let index = current.items.firstIndex(where: { $0["id"]?.string == id }) { body(&current.items[index]) }
+            if let index = current.items.firstIndex(where: { $0.id == id }) { body(&current.items[index]) }
         }
     }
 
@@ -59,14 +65,14 @@ public final class BatchQueue: @unchecked Sendable {
         let configured = settings?.pipeline.batchConcurrency ?? 2
         let limit = configured <= 0 ? Int.max : configured
         while active.withLock({ $0.count }) < limit {
-            guard let item = state.withLock({ $0.items.first { $0["status"]?.string == "queued" } }), let id = item["id"]?.string else { break }
-            let projectDir = item["projectDir"]?.string ?? ""
-            let mode = item["mode"]?.string ?? "continue"
+            guard let item = state.withLock({ $0.items.first { $0.status == .queued } }), let id = item.id else { break }
+            let projectDir = item.projectDir ?? ""
+            let mode = item.mode ?? "continue"
             let startedAt = isoNow()
             mutate(id) { entry in
-                entry["status"] = "running"
-                entry["startedAt"] = .string(startedAt)
-                entry["error"] = .null
+                entry.status = .running
+                entry.startedAt = startedAt
+                entry.clearError()
             }
             active.withLock { _ = $0.insert(id) }
             await persist()
@@ -79,13 +85,13 @@ public final class BatchQueue: @unchecked Sendable {
                 } catch {
                     result = RunResult(status: "failed", error: messageOf(error))
                 }
-                let status = result.status == "done" ? "done" : result.status == "waiting" ? "needs-attention" : result.status == "canceled" ? "paused" : "failed"
-                let error: JSON = result.error.map(JSON.string) ?? (result.status == "waiting" ? .string("等待确认：\(result.step ?? "")") : .null)
+                let status: QueueStatus = result.status == ProjectStatus.done.rawValue ? .done : result.status == ProjectStatus.waiting.rawValue ? .needsAttention : result.status == ProjectStatus.canceled.rawValue ? .paused : .failed
+                let errorMessage: String? = result.error ?? (result.status == ProjectStatus.waiting.rawValue ? "等待确认：\(result.step ?? "")" : nil)
                 let finishedAt = isoNow()
                 self.mutate(id) { entry in
-                    entry["status"] = .string(status)
-                    entry["error"] = error
-                    entry["finishedAt"] = .string(finishedAt)
+                    entry.status = status
+                    if let errorMessage { entry.error = errorMessage } else { entry.clearError() }
+                    entry.finishedAt = finishedAt
                 }
                 self.active.withLock { _ = $0.remove(id) }
                 await self.persist()
@@ -103,9 +109,14 @@ public final class BatchQueue: @unchecked Sendable {
         Task { await pump() }
     }
 
-    public func list() -> (items: [JSON], paused: Bool) {
+    public func listTyped() -> (items: [BatchQueueItem], paused: Bool) {
         load()
         return state.withLock { ($0.items, $0.paused) }
+    }
+
+    public func list() -> (items: [JSON], paused: Bool) {
+        let current = listTyped()
+        return (current.items.map(\.raw), current.paused)
     }
 
     @discardableResult
@@ -116,8 +127,16 @@ public final class BatchQueue: @unchecked Sendable {
         let addedAt = isoNow()
         state.withLock { current in
             for projectDir in projectDirs {
-                if current.items.contains(where: { $0["projectDir"]?.string == projectDir && ["queued", "running"].contains($0["status"]?.string ?? "") }) { continue }
-                current.items.append(.obj(["id": .string(randomHex(6)), "projectDir": .string(projectDir), "batchId": .string(batchId), "batchName": .string(name), "mode": .string(mode), "status": "queued", "addedAt": .string(addedAt)]))
+                if current.items.contains(where: { $0.projectDir == projectDir && ($0.status == .queued || $0.status == .running) }) { continue }
+                var entry = BatchQueueItem(.emptyObject)
+                entry.id = randomHex(6)
+                entry.projectDir = projectDir
+                entry.batchId = batchId
+                entry.batchName = name
+                entry.mode = mode
+                entry.status = .queued
+                entry.addedAt = addedAt
+                current.items.append(entry)
             }
         }
         await persist()
@@ -130,7 +149,7 @@ public final class BatchQueue: @unchecked Sendable {
         load()
         let runningDirs: [String] = state.withLock { current in
             current.paused = true
-            return current.items.filter { $0["status"]?.string == "running" }.compactMap { $0["projectDir"]?.string }
+            return current.items.filter { $0.status == .running }.compactMap(\.projectDir)
         }
         for dir in runningDirs { pipeline.cancel(dir) }
         await persist()
@@ -141,7 +160,12 @@ public final class BatchQueue: @unchecked Sendable {
         load()
         state.withLock { current in
             current.paused = false
-            current.items = current.items.map { $0["status"]?.string == "paused" ? $0.merging(["status": "queued"]) : $0 }
+            current.items = current.items.map { item in
+                guard item.status == .paused else { return item }
+                var next = item
+                next.status = .queued
+                return next
+            }
         }
         await persist()
         notify()
@@ -151,7 +175,7 @@ public final class BatchQueue: @unchecked Sendable {
     public func retry(_ id: String) async {
         load()
         mutate(id) { entry in
-            if !["running", "queued"].contains(entry["status"]?.string ?? "") { entry["status"] = "queued" }
+            if entry.status != .running && entry.status != .queued { entry.status = .queued }
         }
         await persist()
         notify()
@@ -161,9 +185,9 @@ public final class BatchQueue: @unchecked Sendable {
     public func remove(_ id: String) async {
         load()
         let runningDir: String? = state.withLock { current in
-            let item = current.items.first { $0["id"]?.string == id }
-            current.items.removeAll { $0["id"]?.string == id }
-            return item?["status"]?.string == "running" ? item?["projectDir"]?.string : nil
+            let item = current.items.first { $0.id == id }
+            current.items.removeAll { $0.id == id }
+            return item?.status == .running ? item?.projectDir : nil
         }
         if let runningDir { pipeline.cancel(runningDir) }
         await persist()
@@ -178,9 +202,12 @@ public final class BatchQueue: @unchecked Sendable {
         let changed: Bool = state.withLock { current in
             var changed = false
             for index in current.items.indices {
-                let item = current.items[index]
-                guard ["failed", "needs-attention"].contains(item["status"]?.string ?? ""), let dir = item["projectDir"]?.string, statusOf(dir) == "done" else { continue }
-                current.items[index] = item.merging(["status": "done", "error": .null, "finishedAt": .string(isoNow())])
+                var item = current.items[index]
+                guard item.status == .failed || item.status == .needsAttention, let dir = item.projectDir, statusOf(dir) == ProjectStatus.done.rawValue else { continue }
+                item.status = .done
+                item.clearError()
+                item.finishedAt = isoNow()
+                current.items[index] = item
                 changed = true
             }
             return changed
@@ -192,7 +219,7 @@ public final class BatchQueue: @unchecked Sendable {
 
     public func clearFinished() async {
         load()
-        state.withLock { $0.items.removeAll { $0["status"]?.string == "done" } }
+        state.withLock { $0.items.removeAll { $0.status == .done } }
         await persist()
         notify()
     }

@@ -36,8 +36,8 @@ public func planExport(dirs: [String], targetDir baseDir: String, projectStore: 
     var items: [JSON] = []
     var names = Set<String>()
     for dir in dirs {
-        let state = try? projectStore.read(dir)
-        let name = state?["request"]?["softwareName"].truthyValue?.jsString ?? Path.basename(dir)
+        let state = try? projectStore.readTyped(dir)
+        let name = state?.request?.softwareName.flatMap { $0.isEmpty ? nil : $0 } ?? Path.basename(dir)
         var item: JSON = .obj(["dir": .string(dir), "name": .string(name), "folder": .string(Path.join(targetDir, name)), "files": [], "ok": false, "reason": .null, "conflict": false, "warnings": []])
         defer { items.append(item) }
         guard let state else {
@@ -69,8 +69,8 @@ public func planExport(dirs: [String], targetDir baseDir: String, projectStore: 
         item["ok"] = true
         item["conflict"] = .bool(FS.exists(Path.join(targetDir, name)))
         var warnings: [String] = []
-        if state["status"]?.string != "done", state["origin"]?.string != "imported" { warnings.append("项目还有步骤没完成，导出的是上一次生成的交付包") }
-        if state["lastBuild"]?["pdfFonts"].fields.values.contains(where: { $0.isObject && $0["ok"] == .bool(false) }) ?? false { warnings.append("PDF 字体不对，建议先「重新导出 PDF」") }
+        if state.status != .done, state.origin != "imported" { warnings.append("项目还有步骤没完成，导出的是上一次生成的交付包") }
+        if state.lastBuild?.pdfFonts.fields.values.contains(where: { $0.isObject && $0["ok"] == .bool(false) }) ?? false { warnings.append("PDF 字体不对，建议先「重新导出 PDF」") }
         if !files.contains(where: { $0.hasSuffix(".pdf") }) { warnings.append("没有 PDF") }
         item["warnings"] = JSON(warnings)
     }

@@ -58,18 +58,18 @@ public enum TrialData {
         let oldWorkspace = settings["workspaceDir"]?.string ?? Settings().workspaceDir
         let entries = (try FS.readJSON(Path.join(source, "projects-index.json")))?["projects"].items ?? []
         let store = ProjectStore(dataDir: source)
-        let available = try entries.compactMap { entry -> (JSON, JSON)? in
-            guard let dir = entry["dir"]?.string, let state = try store.read(dir) else { return nil }
+        let available = try entries.compactMap { entry -> (JSON, ProjectState)? in
+            guard let dir = entry["dir"]?.string, let state = try store.readTyped(dir) else { return nil }
             return (entry, state)
         }
-        let chosen: [(JSON, JSON)]
+        let chosen: [(JSON, ProjectState)]
         if measure { chosen = available }
         else if !selected.isEmpty {
             chosen = available.filter { row in selected.contains { canonical($0) == canonical(row.0["dir"]!.text) } }
             guard chosen.count == Set(selected.map(canonical)).count else { throw StudioError("指定项目未在正式索引中找到") }
         } else {
-            chosen = Array(available.filter { $0.1["status"]?.string == "done" }.sorted {
-                ($0.1["lastBuild"]?["at"]?.text ?? $0.0["addedAt"].text) > ($1.1["lastBuild"]?["at"]?.text ?? $1.0["addedAt"].text)
+            chosen = Array(available.filter { $0.1.status == .done }.sorted {
+                ($0.1.lastBuild?.at ?? $0.0["addedAt"].text) > ($1.1.lastBuild?.at ?? $1.0["addedAt"].text)
             }.prefix(count))
         }
         // 先写归属标记，失败副本可以安全 reset，但不能作为完整数据复用。
@@ -121,7 +121,7 @@ public enum TrialData {
                 // 测量模式只放空文件夹：列表走真实的读取路径，项目不显示成「文件夹不见了」，正式项目内容一样不碰
                 try FS.mkdirp(new)
             }
-            let next = rewrite(state)
+            let next = rewrite(state.raw)
             try FS.writeJSONAtomic(Path.join(destination, "projects", "\(projectKey(new)).json"), next)
             index.append(rewrite(entry))
         }

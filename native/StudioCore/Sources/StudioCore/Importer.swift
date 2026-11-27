@@ -65,65 +65,81 @@ public func createImportedState(_ dir: String, _ info: JSON) throws -> JSON {
     let manifest = FS.readJSONQuiet(paths.manifest)
     let name = info["name"]?.jsString ?? Path.basename(dir)
     let contentScreens = content?["screens"].items ?? []
-    var request = JSONObject()
-    request["softwareName"] = .string(name)
-    request["versionPolicy"] = content?["versionPolicy"].truthyValue ?? manifest?["versionPolicy"].truthyValue ?? "in-name"
-    request["applicableVersion"] = .string(content?["applicableVersion"].text ?? "")
-    request["screenCount"] = contentScreens.isEmpty ? info["screens"].or(.null) : .number(Double(contentScreens.count))
-    if let createdAt = content?["createdAt"].truthyValue ?? manifest?["createdAt"].truthyValue { request["createdAt"] = createdAt }
+    var req = ProjectRequest(.emptyObject)
+    req.softwareName = name
+    req.versionPolicy = (content?["versionPolicy"].truthyValue ?? manifest?["versionPolicy"].truthyValue)?.jsString ?? "in-name"
+    req.applicableVersion = content?["applicableVersion"].text ?? ""
+    if contentScreens.isEmpty {
+        if let count = info["screens"]?.int, count != 0 { req.screenCount = count } else { req.raw["screenCount"] = .null }
+    } else {
+        req.screenCount = contentScreens.count
+    }
+    if let createdAt = (content?["createdAt"].truthyValue ?? manifest?["createdAt"].truthyValue)?.jsString { req.createdAt = createdAt }
     if let date = [content?["contentDate"].text, manifest?["contentDate"].text].compactMap({ $0 }).first(where: validContentDate) {
-        request["contentDate"] = .string(date)
+        req.contentDate = date
     }
     if let date = [content?["earliestDate"].text, manifest?["earliestDate"].text].compactMap({ $0 }).first(where: validContentDate) {
-        request["earliestDate"] = .string(date)
+        req.earliestDate = date
     }
-    if let override = content?["compileDateOverride"] {
-        request["compileDate"] = override
-    } else if let compileDate = content?["compileDate"]?.string, let date = request["contentDate"]?.string, compileDate != contentDateChinese(date) {
-        request["compileDate"] = .string(compileDate)
+    if let override = content?["compileDateOverride"]?.string {
+        req.compileDate = override
+    } else if let compileDate = content?["compileDate"]?.string, let date = req.contentDate, compileDate != contentDateChinese(date) {
+        req.compileDate = compileDate
     }
-    request["wantDesign"] = .bool(!(content?["design"]?["sections"]?.array?.isEmpty ?? true))
-    request["origin"] = "imported"
-    var state = newState(.object(request))
+    req.wantDesign = !(content?["design"]?["sections"]?.array?.isEmpty ?? true)
+    req.raw["origin"] = "imported"
+    var state = ProjectState(newState(req.raw))
     let importedAt = isoNow()
     let grade = info["grade"]?.string ?? "readonly"
     let hasCodeDoc = info["hasCodeDoc"].isTruthy
-    state["imported"] = .obj(["grade": .string(grade), "importedAt": .string(importedAt), "hadCodeDoc": .bool(hasCodeDoc)])
-    state["readOnly"] = .bool(grade == "readonly")
+    state.imported = .obj(["grade": .string(grade), "importedAt": .string(importedAt), "hadCodeDoc": .bool(hasCodeDoc)])
+    state.readOnly = (grade == "readonly")
     if hasCodeDoc {
-        state.append("warnings", "这个历史项目的代码文档来自旧 skill 内置的固定正文，不是这个软件的代码。重建前请在「交付」里指定代码来源；不指定则重建后不含代码文档（旧交付包会先归档）。")
+        state.warnings = .array(state.warnings.items + ["这个历史项目的代码文档来自旧 skill 内置的固定正文，不是这个软件的代码。重建前请在「交付」里指定代码来源；不指定则重建后不含代码文档（旧交付包会先归档）。"])
     }
-    if grade == "readonly" { return state }
+    if grade == "readonly" { return state.raw }
+
+    func makeStep(_ status: StepStatus, finishedAt: String? = nil, message: String? = nil, includeNullMessage: Bool = false) -> StepState {
+        var s = StepState(.emptyObject)
+        s.status = status
+        if let finishedAt { s.finishedAt = finishedAt }
+        if let message { s.message = message } else if includeNullMessage { s.clearMessage() }
+        return s
+    }
 
     let plan = FS.readJSONQuiet(paths.screenPlan)
-    if plan != nil { state.setChild("steps", "plan", .obj(["status": "done", "finishedAt": .string(importedAt), "message": "沿用历史规划"])) }
+    if plan != nil { state[step: .plan] = makeStep(.done, finishedAt: importedAt, message: "沿用历史规划") }
     var promptsAll = !contentScreens.isEmpty
     for index in 0..<contentScreens.count where !FS.exists(paths.promptFile(screenId(index))) { promptsAll = false }
     // 缺标准提示词文件的历史项目也算「提示词」完成：只有真要重生某一屏时才补写那一屏的提示词
-    if plan != nil { state.setChild("steps", "prompts", .obj(["status": "done", "finishedAt": .string(importedAt), "message": promptsAll ? .null : "部分提示词不是标准文件名，重生时再补写"])) }
+    if plan != nil { state[step: .prompts] = makeStep(.done, finishedAt: importedAt, message: promptsAll ? nil : "部分提示词不是标准文件名，重生时再补写", includeNullMessage: promptsAll) }
     if !contentScreens.isEmpty {
-        state.setChild("steps", "images", .obj(["status": "done", "finishedAt": .string(importedAt)]))
-        state.setChild("steps", "content", .obj(["status": "done", "finishedAt": .string(importedAt)]))
-        state.setChild("steps", "design", .obj(["status": .string(content?["design"]?["sections"]?.array?.isEmpty ?? true ? "skipped" : "done")]))
+        state[step: .images] = makeStep(.done, finishedAt: importedAt)
+        state[step: .content] = makeStep(.done, finishedAt: importedAt)
+        state[step: .design] = makeStep(content?["design"]?["sections"]?.array?.isEmpty ?? true ? .skipped : .done)
         let tokensHash = hashObject(JSON(forbiddenBrandTokens(name)))
         for index in 0..<contentScreens.count {
             let id = screenId(index)
             let file = paths.screenFile(id)
             guard FS.exists(file) else { continue }
             let sha = try sha256File(file)
-            var screen: JSON = .obj(["imageSha": .string(sha)])
+            var screen = ScreenState(.emptyObject)
+            screen.imageSha = sha
             if grade == "ready" {
-                screen["gate"] = .obj(["status": "passed", "method": "imported-receipt", "sha": .string(sha), "tokensHash": .string(tokensHash), "checkedAt": .string(importedAt), "reasons": []])
+                screen.gate = .obj(["status": "passed", "method": "imported-receipt", "sha": .string(sha), "tokensHash": .string(tokensHash), "checkedAt": .string(importedAt), "reasons": []])
             }
-            state.setChild("screens", id, screen)
+            state[screen: id] = screen
         }
         if grade == "ready" {
-            state.setChild("steps", "gate", .obj(["status": "done", "finishedAt": .string(importedAt), "message": "沿用历史审查回执"]))
-            state.setChild("steps", "receipt", .obj(["status": "done", "finishedAt": .string(importedAt)]))
-            if info["hasBundle"].isTruthy { state.setChild("steps", "build", .obj(["status": "done", "finishedAt": .string(importedAt), "message": "沿用历史交付包"])) }
+            state[step: .gate] = makeStep(.done, finishedAt: importedAt, message: "沿用历史审查回执")
+            state[step: .receipt] = makeStep(.done, finishedAt: importedAt)
+            if info["hasBundle"].isTruthy { state[step: .build] = makeStep(.done, finishedAt: importedAt, message: "沿用历史交付包") }
         }
     }
-    let allDone = state["steps"].fields.values.allSatisfy { ["done", "skipped"].contains($0["status"]?.string ?? "") }
-    state["status"] = .string(allDone ? "done" : "idle")
-    return state
+    let allDone = state.steps.fields.keys.allSatisfy {
+        let status = state[step: PipelineStepName(rawValue: $0)]?.status
+        return status == .done || status == .skipped
+    }
+    state.status = allDone ? .done : .idle
+    return state.raw
 }
