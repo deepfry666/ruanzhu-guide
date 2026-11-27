@@ -153,7 +153,7 @@ public struct FontVerdict: Sendable, Hashable {
 /// 替代字体里没有的个别符号（✓ − ℃ ⚠ ‑ 等），LibreOffice 会从 macOS 自带的这些字体里补字，每次都一样，不算字体不对：
 /// 系统符号字体，以及和苹方同为无衬线、字形接近的冬青黑体（Hiragino Sans / 角ゴシック）、苹方繁体、Helvetica、Arial Unicode。
 /// 正文没换成目标字体时（预期字体根本没出现，或混进魏碑、圆体、Liberation 这类）仍然算不对。
-/// （Electron 版没有放行，正文里有这类符号时第一个方案被判失败，换到认不出的英文名后反而乱抓字体。）
+/// 不放行这类系统补字字体时，正文里出现个别符号会误判字体方案失败，导致换用无效字体名而错抓字体。
 public let SYMBOL_FALLBACK_FONTS = "^(LucidaGrande|AppleSymbols|ZapfDingbats|STIX|Symbol|AppleColorEmoji|Menlo|HiraginoSans-|HiraKaku|PingFang(TC|HK|MO)-|Helvetica|ArialUnicodeMS)"
 
 /// 核对：必须用到预期字体；除了它（和允许的补字字体）以外不能出现别的字体。

@@ -195,7 +195,7 @@ public final class BatchQueue: @unchecked Sendable {
     }
 
     /// 批量里失败或等确认的项目，之后在项目里手动处理完成了，就把这条记录也标成完成，
-    /// 不然「需处理」一直挂着（Electron 版没有这一步，只能一直留着）。
+    /// 避免「需处理」状态一直挂在队列里。
     /// statusOf 返回项目当前状态；只在不是批量自己正在跑的项目上生效。
     public func settle(statusOf: (String) -> String?) async {
         load()

@@ -130,7 +130,7 @@ public enum FS {
         return String(decoding: data, as: UTF8.self)
     }
 
-    /// 读 JSON：文件不存在返回 nil；内容损坏时报错（和 Electron 版一样）。
+    /// 读 JSON：文件不存在返回 nil；文件内容损坏时报错。
     public static func readJSON(_ path: String) throws -> JSON? {
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
         do {
@@ -256,7 +256,7 @@ public func sha1Hex(_ data: Data) -> String {
     Insecure.SHA1.hash(data: data).map { String(format: "%02x", $0) }.joined()
 }
 
-/// 对象哈希：键排序后的 JSON 再算 SHA-256（和 Electron 版一致，导入的项目不会被误判为「有改动」）。
+/// 对象哈希：键按 UTF-16 排序后的 JSON 再算 SHA-256（固定算法，确保已有项目的输入哈希稳定，不会被误判为「有改动」）。
 public func hashObject(_ value: JSON) -> String { sha256Hex(value.stableStringify()) }
 
 public func randomHex(_ bytes: Int) -> String {

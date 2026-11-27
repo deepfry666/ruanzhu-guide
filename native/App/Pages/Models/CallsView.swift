@@ -4,7 +4,7 @@ import SwiftUI
 private let ROLE_LABEL = ["primary": "首发", "hedge": "补发", "failover": "切换", "retry": "重试", "probe": "测速", "resume": "续查", "history": "历史导入"]
 private let OUTCOME_LABEL = ["winner": "采用", "alternate": "备选", "loser": "被取消", "canceled": "已取消", "timeout": "超时", "job-failed": "整屏失败"]
 
-/// 统计页用的百分位（取最近的一个样本，不插值，和 Electron 版界面一致）。
+/// 统计页用的百分位（取最近的一个样本，不插值）。
 private func uiPercentile(_ values: [Double], _ p: Double) -> Double? {
     guard !values.isEmpty else { return nil }
     let sorted = values.sorted()

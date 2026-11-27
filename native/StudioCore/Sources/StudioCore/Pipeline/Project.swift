@@ -25,7 +25,7 @@ public struct ProjectPaths: Sendable {
 
 public func projectPaths(_ dir: String) -> ProjectPaths { ProjectPaths(dir: dir) }
 
-/// 新项目的状态（字段和 Electron 版一致）。
+/// 创建新项目的初始状态（字段格式固定，供项目持久化与导入共用）。
 public func newState(_ request: JSON) -> JSON {
     let req = ProjectRequest(request)
     var fields = ProjectRequest(.emptyObject)
@@ -136,7 +136,7 @@ extension StepState {
     }
 }
 
-/// 项目状态文件名：路径的 SHA-1 前 16 位（和 Electron 版一致，导入后能对上）。
+/// 项目状态文件名：规范路径的 SHA-1 前 16 位（固定映射，便于导入历史项目时对应状态文件）。
 public func projectKey(_ dir: String) -> String {
     String(Insecure.SHA1.hash(data: Data(Path.resolve(dir).utf8)).map { String(format: "%02x", $0) }.joined().prefix(16))
 }

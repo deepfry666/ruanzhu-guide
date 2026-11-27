@@ -1,6 +1,6 @@
 import Foundation
 
-/// 组装所有核心服务。App 和测试都通过它使用核心功能（对应 Electron 版的 core/index.mjs）。
+/// 组装所有核心服务。App 和测试都通过它使用核心功能。
 public final class StudioCore: @unchecked Sendable {
     public let dataDir: String
     public let settingsStore: SettingsStore

@@ -1,6 +1,6 @@
 import Foundation
 
-// 各步骤给大模型的提示词和程序复核（系统提示词和 JSON Schema 在 LLMPrompts.generated.swift，由 Electron 版原样生成）。
+// 各步骤给大模型的提示词和程序复核（系统提示词和 JSON Schema 在 LLMPrompts.swift）。
 
 // MARK: - S1 规划
 

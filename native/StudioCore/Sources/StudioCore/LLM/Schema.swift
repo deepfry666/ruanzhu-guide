@@ -9,7 +9,7 @@ public enum SchemaValidator {
         return errors
     }
 
-    /// 和 Electron 版的 describeAjvErrors 一样：最多 12 条，用「；」连接。
+    /// 汇总 Schema 校验错误：最多保留 12 条，用「；」连接。
     public static func describe(_ errors: [String]) -> String {
         errors.prefix(12).joined(separator: "；")
     }

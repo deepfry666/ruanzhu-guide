@@ -1,7 +1,7 @@
 import Foundation
 
 /// 固定流水线：规划 → 提示词 → 生图 → 验收 → 文案 → 设计说明 → 回执 → 构建。
-/// 每一步记录输入哈希，只重跑受影响的步骤（逻辑和 Electron 版 runner.mjs 逐条对应）。
+/// 每一步记录输入哈希，只重跑受影响的步骤。
 public final class Pipeline: @unchecked Sendable {
     let settingsStore: SettingsStore
     let secrets: SecretStore

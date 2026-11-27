@@ -35,7 +35,7 @@ public let LLM_STEPS: [String: LlmStepInfo] = [
     "feedback": LlmStepInfo(label: "整理修改意见", needsVision: false, fallback: "plan"),
 ]
 
-// MARK: - 宽松解码：字段缺失或类型不对时用默认值（相当于 Electron 版的 deepMerge + sanitizeSettings）
+// MARK: - 宽松解码：字段缺失或类型不对时回退默认值，避免旧配置文件导致解码失败
 
 extension KeyedDecodingContainer {
     func value<T: Decodable>(_ key: Key, _ fallback: T) -> T {

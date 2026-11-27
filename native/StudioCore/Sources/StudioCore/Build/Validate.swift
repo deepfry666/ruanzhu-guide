@@ -3,7 +3,7 @@ import Foundation
 public let GUIDE_SUFFIX = "指南"
 public let CODE_SUFFIX = "指南_代码-（JAVA）"
 
-/// 交付包里应有的文件（顺序和 Electron 版一致：说明书 docx、txt、pdf，代码 docx、pdf）。
+/// 交付包里应有的文件，按固定顺序排列：说明书 docx、txt、pdf，代码 docx、pdf。
 public func expectedBundleFiles(_ name: String, withCode: Bool, withPdf: Bool) -> [(role: String, file: String)] {
     var files = [("guideDocx", "\(name)\(GUIDE_SUFFIX).docx"), ("guideTxt", "\(name)\(GUIDE_SUFFIX).txt")]
     if withPdf { files.append(("guidePdf", "\(name)\(GUIDE_SUFFIX).pdf")) }

@@ -36,7 +36,7 @@ public struct HTTPResponse: Sendable {
     public func header(_ name: String) -> String? { headers[name.lowercased()] }
 }
 
-/// 网络传输（相当于 Electron 版的 fetchImpl）：App 用 URLSession，测试换成模拟中转站。
+/// 网络传输抽象：App 使用 URLSession，测试可替换为模拟实现。
 public protocol HTTPClient: Sendable {
     func send(_ request: HTTPRequest) async throws -> HTTPResponse
 }

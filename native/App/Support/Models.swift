@@ -221,7 +221,7 @@ struct ScreenItem: Identifiable {
     var warnings: [String] { ((state.imageWarnings?.items ?? []) + (gate?["warnings"].items ?? [])).map(\.jsString) }
 }
 
-// MARK: - 格式化（和 Electron 版界面一致）
+// MARK: - 格式化
 
 private let timeFormatter: DateFormatter = {
     let formatter = DateFormatter()

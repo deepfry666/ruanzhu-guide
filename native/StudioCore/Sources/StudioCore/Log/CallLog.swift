@@ -1,6 +1,6 @@
 import Foundation
 
-/// 线性插值的百分位（和 Electron 版一致）。
+/// 线性插值的百分位，用于计算耗时分位与超时补发阈值。
 public func percentile(_ values: [Double], _ p: Double) -> Double? {
     guard !values.isEmpty else { return nil }
     let sorted = values.sorted()

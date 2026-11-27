@@ -1,7 +1,6 @@
 import Foundation
 
-/// 有序的 JSON 对象：键的顺序和写入顺序一致（和 JS 对象一样），
-/// 这样写回文件、算哈希时和 Electron 版逐字节一致。
+/// 有序的 JSON 对象：保持键的写入顺序，确保写回文件与计算哈希时字节输出稳定一致。
 public struct JSONObject: Sendable, Hashable, Sequence {
     public private(set) var keys: [String] = []
     private var storage: [String: JSON] = [:]
@@ -305,7 +304,7 @@ extension JSON {
         }
     }
 
-    /// 键排序后的序列化，用于算哈希（和 Electron 版的 stableStringify 一致）。
+    /// 键按 UTF-16 排序后的紧凑序列化，用于稳定计算输入哈希。
     public func stableStringify() -> String {
         switch self {
         case .array(let items): return "[" + items.map { $0.stableStringify() }.joined(separator: ",") + "]"

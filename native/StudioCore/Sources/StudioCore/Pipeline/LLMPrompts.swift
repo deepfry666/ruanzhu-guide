@@ -1,4 +1,4 @@
-// 固定内容，最早从 Electron 版原样移植过来；现在直接在这里维护。
+// 各步骤给大模型的系统提示词与 JSON Schema，直接在此维护。
 
 import Foundation
 
