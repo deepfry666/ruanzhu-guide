@@ -181,18 +181,19 @@ public func buildBundle(_ input: BuildInput, onLog: @Sendable (String) async -> 
     FS.remove(staging)
 
     let pdfPages = withPdf ? countPdfPages(Path.join(finalBundle, "\(softwareName)指南.pdf")) : nil
-    return .obj([
-        "bundleDir": .string(finalBundle),
-        "files": JSON(expectedBundleFiles(softwareName, withCode: withCode, withPdf: withPdf).map(\.file)),
-        "withPdf": .bool(withPdf),
-        "withCode": .bool(withCode),
-        "code": code.map { .obj(["fileCount": .number(Double($0.fileCount)), "lineCount": .number(Double($0.lineCount)), "estimatedPages": .number(Double($0.estimatedPages))]) } ?? .null,
-        "pdfPages": JSON.orNull(pdfPages),
-        "pdfFonts": summarizeFonts(pdfFonts),
-        "codeSha256": JSON.orNull(code?.sha256),
-        "codePdfPages": JSON.maybe(withCode && withPdf ? countPdfPages(Path.join(finalBundle, "\(softwareName)\(CODE_SUFFIX).pdf")) : nil),
-        "warnings": JSON(warnings),
-    ])
+    let codePdfPages = withCode && withPdf ? countPdfPages(Path.join(finalBundle, "\(softwareName)\(CODE_SUFFIX).pdf")) : nil
+    var record = BuildRecord(.emptyObject)
+    record.bundleDir = finalBundle
+    record.files = JSON(expectedBundleFiles(softwareName, withCode: withCode, withPdf: withPdf).map(\.file))
+    record.withPdf = withPdf
+    record.withCode = withCode
+    record.code = code.map { .obj(["fileCount": .number(Double($0.fileCount)), "lineCount": .number(Double($0.lineCount)), "estimatedPages": .number(Double($0.estimatedPages))]) } ?? .null
+    if let pdfPages { record.pdfPages = pdfPages } else { record.raw["pdfPages"] = .null }
+    record.pdfFonts = summarizeFonts(pdfFonts)
+    if let sha = code?.sha256 { record.codeSha256 = sha } else { record.raw["codeSha256"] = .null }
+    if let codePdfPages { record.codePdfPages = codePdfPages }
+    record.warnings = JSON(warnings)
+    return record.raw
 }
 
 /// 重新导出 PDF；发现旧指南图片超宽时，先用现有内容与截图重排指南 Word。
@@ -283,5 +284,12 @@ public func reexportBundlePdfs(projectDir: String, softwareName: String, staging
         manifest["pdfFonts"] = manifest["pdfFonts"].or(.emptyObject).merging(summarizeFonts(results))
         try FS.writeJSONAtomic(paths.manifest, manifest)
     }
-    return .obj(["files": JSON(replacements.map { Path.basename($0) }), "guideLayoutRepaired": .bool(repairedGuide != nil), "pdfFonts": summarizeFonts(results), "warnings": JSON(warnings), "pdfPages": JSON.maybe(guidePages), "codePdfPages": JSON.maybe(codePages)])
+    var report = BuildRecord(.emptyObject)
+    report.files = JSON(replacements.map { Path.basename($0) })
+    report.raw["guideLayoutRepaired"] = .bool(repairedGuide != nil)
+    report.pdfFonts = summarizeFonts(results)
+    report.warnings = JSON(warnings)
+    if let guidePages { report.pdfPages = guidePages }
+    if let codePages { report.codePdfPages = codePages }
+    return report.raw
 }
