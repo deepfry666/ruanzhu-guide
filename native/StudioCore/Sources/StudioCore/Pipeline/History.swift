@@ -99,10 +99,6 @@ func refreshBundleHashes(_ lastBuild: BuildRecord, _ dir: String, _ softwareName
     return .object(hashes)
 }
 
-func refreshBundleHashes(_ lastBuild: JSON, _ dir: String, _ softwareName: String, files: [String]) -> JSON {
-    refreshBundleHashes(BuildRecord(lastBuild), dir, softwareName, files: files)
-}
-
 /// 上次软件生成交付包后，又在软件外被改过的文件名。
 /// 有指纹时逐个比对；1.4.9 之前生成、没有指纹的，只看指南 Word 的修改时间是否晚于上次生成 2 分钟以上
 /// （代码文档和 TXT 会被「批量应用代码模板」改写，旧项目不按时间判断，免得误报）。
@@ -121,10 +117,6 @@ public func externallyEditedFiles(_ dir: String, _ state: ProjectState) -> [Stri
     let guide = "\(name)指南.docx"
     guard let mtime = FS.mtimeMs(Path.join(bundle, guide)) else { return [] }
     return mtime > built.timeIntervalSince1970 * 1000 + 120_000 ? [guide] : []
-}
-
-public func externallyEditedFiles(_ dir: String, _ state: JSON) -> [String] {
-    externallyEditedFiles(dir, ProjectState(state))
 }
 
 extension ISO8601DateFormatter {

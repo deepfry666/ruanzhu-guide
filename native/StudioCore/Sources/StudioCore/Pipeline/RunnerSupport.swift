@@ -66,10 +66,6 @@ public func codeSourceFor(_ state: ProjectState, _ settings: Settings) -> (sourc
     return (.obj(["path": .string(global.path), "extensions": JSON(global.extensions.isEmpty ? [".java"] : global.extensions)]), false)
 }
 
-public func codeSourceFor(_ state: JSON, _ settings: Settings) -> (source: JSON?, locked: Bool) {
-    codeSourceFor(ProjectState(state), settings)
-}
-
 /// 软件名里有没有版本号（V1.0、1.0.0 这类）。
 public func detectVersion(_ softwareName: String) -> String? {
     Rx.matches(#"(?:V|v)\s?[0-9]+(?:\.[0-9]+)*|[0-9]+(?:\.[0-9]+)+"#, softwareName).last?[0] ?? nil

@@ -23,8 +23,6 @@ public func explicitEarliestDate(_ state: ProjectState) -> String? {
     return validContentDate(value) ? value : nil
 }
 
-public func explicitEarliestDate(_ state: JSON) -> String? { explicitEarliestDate(ProjectState(state)) }
-
 public func earliestDateOf(_ state: ProjectState) -> String {
     let base = contentDateOf(state)
     guard let explicit = explicitEarliestDate(state) else { return addDays(base, -DEFAULT_HISTORY_DAYS) }
@@ -178,18 +176,12 @@ public func dateProblems(_ state: ProjectState, _ label: String, _ texts: [Strin
     return laterProblem + ["\(label)里出现了早于 \(earliest) 的日期：\(hits.prefix(8).joined(separator: "、"))。历史记录只能在 \(earliest) 至 \(base) 之间，请改到这个范围内；提醒、到期这类以后的事不写具体日期"]
 }
 
-public func dateProblems(_ state: JSON, _ label: String, _ texts: [String], allowed: Set<String> = []) -> [String] {
-    dateProblems(ProjectState(state), label, texts, allowed: allowed)
-}
-
 /// 规划时可用的日期：今天、前 1、3、6、10 天（不早于最早日期）。
 public func datePool(_ state: ProjectState) -> [String] {
     let base = contentDateOf(state)
     let earliest = earliestDateOf(state)
     return uniqued([0, -1, -3, -6, -10].map { addDays(base, $0) }.filter { $0 >= earliest })
 }
-
-public func datePool(_ state: JSON) -> [String] { datePool(ProjectState(state)) }
 
 /// 「10-19（今天）、10-18、10-16」
 func datePoolText(_ state: ProjectState) -> String {
@@ -206,16 +198,12 @@ public func planDateRule(_ state: ProjectState, _ profile: AppProfile?) -> Strin
     return "\n\n日期（程序会检查）：今天是 \(contentDateOf(state))。界面上要日期时只能用这几天：\(datePoolText(state))；列表里也可以写「今天」「昨天」或只写时间。不写年份，不写今天以后的具体日期（提醒、到期写成「每月 17 日」「3 天后」这类说法）。汇总要和列表一致：「本月」「近 7 天」只算范围内的记录，条数、合计照着 ledger 算；列表从新到旧；同一条记录各屏日期一致；累计次数、天数要符合刚开始用十来天。"
 }
 
-public func planDateRule(_ state: JSON, _ profile: AppProfile?) -> String { planDateRule(ProjectState(state), profile) }
-
 /// 写进正文和设计说明的日期规定（截图已经定了，只要求和截图一致）。没设置内容日期的历史项目不加。
 public func contentDateRule(_ state: ProjectState) -> String {
     guard dateRuleActive(state) else { return "" }
     if AppProfile(state.appProfile)?.dateMode == "none" { return "\n\n日期：正文不写具体日期。" }
     return "\n\n日期：正文里的日期必须和截图上的一致，不新增截图上没有的日期；不写 \(earliestDateOf(state)) 以前或 \(contentDateOf(state)) 以后的具体日期。"
 }
-
-public func contentDateRule(_ state: JSON) -> String { contentDateRule(ProjectState(state)) }
 
 /// 写进生图提示词的日期规定（英文，一句话）。
 public func imageDateRule(_ state: ProjectState) -> String {
@@ -226,8 +214,6 @@ public func imageDateRule(_ state: ProjectState) -> String {
     default: return "Any date shown must be between \(earliestDateOf(state)) and \(contentDateOf(state)); do not show earlier years."
     }
 }
-
-public func imageDateRule(_ state: JSON) -> String { imageDateRule(ProjectState(state)) }
 
 /// 把一个日期写回原来的写法：数字段逐个替换，原来两位的仍补成两位。
 private func rewriteDate(_ text: String, _ mention: DateMention, to key: String) -> String {
@@ -271,10 +257,6 @@ public func outOfRangeDateFixes(_ texts: [String], _ state: ProjectState) -> [(S
         seen.insert(mention.text)
     }
     return fixes
-}
-
-public func outOfRangeDateFixes(_ texts: [String], _ state: JSON) -> [(String, String)] {
-    outOfRangeDateFixes(texts, ProjectState(state))
 }
 
 /// 把替换表应用到规划里会进截图和正文的文字上（示例数据、应包含、画面描述、底账、文字契约）。

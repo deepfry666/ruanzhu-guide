@@ -2,31 +2,6 @@
 
 import Foundation
 
-public let PLAN_SYSTEM = #"""
-你是资深移动产品经理兼 UI 设计师，负责为中文《软件用户手册》规划手机 App 界面截图。
-要求：
-1. 根据软件名和用户要求推断合理的领域、目标用户和核心流程，界面必须是这个领域专属的，不要做成能套用到别的产品上的通用模板，也不要七个都是仪表盘变体。
-2. 常见领域覆盖参考：
-   - 计算/计数：输入、执行、结果、历史、设置
-   - 记账：录入、分类、账单列表、统计、预算/提醒、导出
-   - 决定/随机/抽签：选项编辑、执行、结果、历史、模板、设置
-   - 学习/训练：课程/首页、任务、练习、进度、笔记/收藏、我的
-   - 健康/运动：总览、记录录入、计划、趋势、提醒、我的
-   - 库存：物品列表、出入库、扫码/搜索、盘点、预警、设置
-   - 日程：日历、新建事件、提醒、任务列表、视图切换、设置
-   - 识别/文档/翻译：拍摄/导入、识别、可编辑结果、历史、导出分享
-   - 地图/出行：搜索、路线/行程、详情、收藏/历史、设置
-   - 客户/会员/订单：总览、列表/搜索、详情、新增/编辑、统计、导出/设置
-   - 游戏：开始/主菜单、关卡/模式选择、对局进行中、结算、排行/成就、商店/角色、设置
-3. 屏数优先按用户指定；未指定时以 7 屏为兜底，按功能覆盖增减（5–10 屏），并在 coverageReason 里说明理由。7 屏兜底顺序：入口/引导 → 主页总览 → 核心设置或输入 → 核心操作或查询 → 记录或列表 → 详情/结果/回执 → 我的/设置/收尾。
-4. 每屏有独立的状态、操作、反馈和目的，顺序可导航、可信。界面标签简短，示例数据具体且属于该领域；同一对象在不同屏的数值必须一致。
-5. 截图界面里绝对不能出现软件名、App 名、版本号、名称型 logo 或 wordmark；导航标签、页面标题、示例数据里都不要包含软件名或其中可识别的品牌词。设置页、我的页不要出现「关于本软件」「当前版本」「检查更新」这类会显示版本号的条目。
-6. title 是界面中文名（用于图注，如「运营总览首页」），2–12 个字，各屏不重复。
-7. visualBrief 用英文写给生图模型（120–260 个英文单词），描述该屏的具体布局、组件、状态和需要出现的中文界面文字（中文原样写在英文句子里），要具体到卡片、按钮、数值。
-8. uiContract 是所有屏共享的视觉约束：visualStyle（英文短语）、palette（primary/background/surface/text 必填，可加 muted/warning/success/danger，均为 #RRGGBB）、typography、radius、shadow、density、navigation（type 取 bottom-tabs / stack / none，labels 为底部导航中文标签，iconSemantics 为英文图标含义）。
-9. textContract 用中文写：entry 从哪里进入、action 主要操作、feedback 成功反馈、exception 异常处理、exit 下一步/返回。
-"""#
-
 public let GATE_SYSTEM = #"""
 你是严格的移动 App 截图验收员。逐字查看截图，回答：
 - singleScreen：是否只有一个完整的手机界面（不是拼图、不是多屏、不是设计稿合集）。
@@ -59,22 +34,6 @@ public let DESIGN_SYSTEM = #"""
 4. 接口设计：只写领域或用户要求支持的内部/外部接口，说明用途、输入、输出、错误。
 5. 数据结构设计：核心实体、标识、关系、状态字段、时间戳、保留策略。
 每节 250–600 字，可用换行分段；不要出现「图N」字样，不要说软件是虚构的。
-"""#
-
-public let FEEDBACK_SYSTEM = #"""
-你负责把用户对一个《软件用户手册》项目提的多条修改意见整理成具体的修改动作。手册由若干张手机 App 截图和每张图的说明文字组成，图N 就是第 N 张截图。
-动作类型：
-- image：要改截图画面本身（颜色、布局、控件、图上的文字和数据、风格）。target 写 screen-XX；所有截图都要改时 target 写 all。图改了以后，这一屏的说明会自动按新图重写，不需要再加 text 动作，除非用户对文字另有要求。
-- text：只改某一屏的说明文字（内容侧重、补充什么、删掉什么、措辞），不改图。target 写 screen-XX。
-- overview：改封面介绍。target 写 overview。
-- design：改「软件设计说明」章节。target 写 design。
-- replan：要增加或删除界面、改屏数、整体换功能方向。target 写 all。有 replan 时所有截图和说明都会重做，不要再给其他屏单独出 image / text 动作。
-规则：
-1. 同一屏、同一类型只出一个动作；多条意见说的是同一屏同一件事时合并，instruction 里把要求写全。
-2. instruction 用中文，写清楚改什么、怎么改，以及哪些保持不变；不要扩大用户没提到的修改范围。
-3. items 写这个动作来自哪几条意见（意见编号）。每条意见至少出现在一个动作或一个问题里。
-4. 说不清改哪一屏、意见之间互相矛盾、或者需要用户做决定的，放进 questions，不要猜。
-5. summary 用一两句话概括这次要改什么。
 """#
 
 public let PROMPT_EDIT_SYSTEM = #"""
@@ -402,80 +361,6 @@ public let DESIGN_SCHEMA: JSON = try! JSON.parse(#"""
 }
 """#)
 
-public let FEEDBACK_SCHEMA: JSON = try! JSON.parse(#"""
-{
-  "type": "object",
-  "required": [
-    "summary",
-    "actions",
-    "questions"
-  ],
-  "properties": {
-    "summary": {
-      "type": "string"
-    },
-    "actions": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": [
-          "type",
-          "target",
-          "instruction",
-          "items"
-        ],
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "image",
-              "text",
-              "overview",
-              "design",
-              "replan"
-            ]
-          },
-          "target": {
-            "type": "string"
-          },
-          "instruction": {
-            "type": "string",
-            "minLength": 2
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "integer"
-            }
-          }
-        }
-      }
-    },
-    "questions": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": [
-          "question",
-          "items"
-        ],
-        "properties": {
-          "question": {
-            "type": "string"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "integer"
-            }
-          }
-        }
-      }
-    }
-  }
-}
-"""#)
-
 public let PROMPT_EDIT_SCHEMA: JSON = try! JSON.parse(#"""
 {
   "type": "object",
@@ -490,5 +375,3 @@ public let PROMPT_EDIT_SCHEMA: JSON = try! JSON.parse(#"""
   }
 }
 """#)
-
-public let FEEDBACK_TYPES = ["image","text","overview","design","replan"]

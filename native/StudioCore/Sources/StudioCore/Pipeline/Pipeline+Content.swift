@@ -415,8 +415,4 @@ extension Pipeline {
             return nil // 其余步骤内部自行增量判断
         }
     }
-
-    func stepInputHash(_ step: String, _ dir: String, _ state: JSON, _ settings: Settings) -> String? {
-        stepInputHash(PipelineStepName(rawValue: step), dir, ProjectState(state), settings)
-    }
 }

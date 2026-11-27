@@ -69,7 +69,7 @@ struct ProvidersView: View {
                 )
             ) {
                 if providers.isEmpty {
-                    Text("还没有线路。点「添加线路」，或者「从旧 skill 导入」。")
+                    Text("还没有线路。点「添加线路」开始配置。")
                         .textStyle(Typography.body)
                         .foregroundStyle(Palette.textSecondary)
                         .padding(Spacing.lg)

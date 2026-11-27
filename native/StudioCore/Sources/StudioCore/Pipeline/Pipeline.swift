@@ -179,11 +179,6 @@ public final class Pipeline: @unchecked Sendable {
         return state
     }
 
-    @discardableResult
-    func update(_ dir: String, _ mutate: @escaping @Sendable (inout JSON) throws -> Void) async throws -> JSON {
-        try await updateState(dir) { try mutate(&$0.raw) }.raw
-    }
-
     func log(_ dir: String, _ message: String, _ level: String = "info") async throws {
         try await updateState(dir) { appendLog(&$0, message, level) }
         emit(.obj(["type": "log", "projectDir": .string(dir), "message": .string(message), "level": .string(level)]))
@@ -194,17 +189,12 @@ public final class Pipeline: @unchecked Sendable {
         return state
     }
 
-    func readState(_ dir: String) throws -> JSON {
-        try readTypedState(dir).raw
-    }
-
     func platformOf(_ state: ProjectState, _ settings: Settings) -> String {
         let platform = state.request?.platform ?? ""
         return platform.isEmpty ? settings.pipeline.platform : platform
     }
 
     func softwareName(_ state: ProjectState) -> String { state.request?.softwareName ?? "" }
-    func softwareName(_ state: JSON) -> String { softwareName(ProjectState(state)) }
 
     /// 截图验收结果在这些条件不变时才有效：禁词，以及设置了内容日期的项目的日期规则。
     func gateKey(_ state: ProjectState) -> String {

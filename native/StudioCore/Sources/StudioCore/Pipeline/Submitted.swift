@@ -11,7 +11,3 @@ public func isSubmitted(_ state: JSON?) -> Bool { isSubmitted(state.map(ProjectS
 func assertNotSubmitted(_ state: ProjectState?) throws {
     if isSubmitted(state) { throw StudioError("这个项目已标为「已提交」，只能查看；要修改请先取消已提交") }
 }
-
-func assertNotSubmitted(_ state: JSON?) throws {
-    try assertNotSubmitted(state.map(ProjectState.init))
-}

@@ -4,19 +4,6 @@ import Foundation
 
 // MARK: - S1 规划
 
-public func planUserPrompt(softwareName: String, screenCount: Int?, emphasis: String, notes: String, platform: String) -> String {
-    [
-        "软件名（仅作上下文，界面里不能显示）：\(softwareName)",
-        "平台：\(platform)",
-        screenCount.map { "截图屏数：必须正好 \($0) 屏" } ?? "截图屏数：未指定，按功能覆盖决定（默认 7 屏）",
-        emphasis.isEmpty ? "" : "用户强调的功能：\(emphasis)",
-        notes.isEmpty ? "" : "补充说明：\(notes)",
-        "",
-        "输出 JSON 结构：",
-        ##"{"profile":{"domain":"","targetUser":"","coreFlow":"A—B—C"},"coverageReason":"","features":[{"name":"","screenId":"screen-01","tier":"core"}],"uiContract":{"visualStyle":"","palette":{"primary":"#2563EB","background":"#F5F7FB","surface":"#FFFFFF","text":"#172033"},"typography":"","radius":"","shadow":"","density":"","navigation":{"type":"bottom-tabs","labels":[],"iconSemantics":[]}},"screens":[{"id":"screen-01","title":"","pageType":"","activeTab":null,"mustShow":[],"sampleData":[],"textContract":{"entry":"","action":"","feedback":"","exception":"","exit":""},"visualBrief":""}]}"##,
-    ].filter { !$0.isEmpty }.joined(separator: "\n")
-}
-
 public func planCheck(_ plan: JSON, softwareName: String, screenCount: Int?) -> [String] {
     var problems: [String] = []
     let screens = plan["screens"].items
@@ -153,56 +140,6 @@ public func designCheck(_ result: JSON) -> [String] {
     result["sections"].items.compactMap { section in
         hasFigureReference("\(templateText(section["title"]))\(templateText(section["text"]))") ? "「\(templateText(section["title"]))」里出现了「图N」字样" : nil
     }
-}
-
-// MARK: - 修改意见：整理
-
-public struct FeedbackScreen: Sendable {
-    public let figure: String
-    public let id: String
-    public let title: String
-    public let inventory: String
-    public let visual: String
-    public let text: String
-}
-
-public func feedbackUserPrompt(softwareName: String, screens: [FeedbackScreen], overview: String, hasDesign: Bool, items: [String]) -> String {
-    var lines = ["软件名：\(softwareName)", "当前截图："]
-    for screen in screens {
-        let picture = !screen.inventory.isEmpty ? "；画面：\(screen.inventory)" : !screen.visual.isEmpty ? "；画面计划：\(screen.visual)" : ""
-        lines.append("- \(screen.figure)（\(screen.id)）「\(screen.title)」\(picture)\(screen.text.isEmpty ? "" : "；说明开头：\(screen.text)")")
-    }
-    lines.append(overview.isEmpty ? "" : "封面介绍：\(overview)")
-    lines.append(hasDesign ? "手册里有「软件设计说明」章节。" : "手册里没有「软件设计说明」章节。")
-    lines.append("")
-    lines.append("修改意见：")
-    for (index, item) in items.enumerated() { lines.append("意见\(index + 1)：\(item)") }
-    lines.append("")
-    lines.append(#"输出 JSON：{"summary":"","actions":[{"type":"image","target":"screen-03","instruction":"","items":[1]}],"questions":[{"question":"","items":[2]}]}"#)
-    return lines.filter { !$0.isEmpty }.joined(separator: "\n")
-}
-
-public func feedbackCheck(_ result: JSON, screenIds: [String], itemCount: Int) -> [String] {
-    var problems: [String] = []
-    var seen = Set<String>()
-    var covered = Set<Double>()
-    for action in result["actions"].items {
-        let target = action["target"].text
-        let type = templateText(action["type"])
-        if type == "image", target != "all", !screenIds.contains(target) { problems.append("image 动作的 target 必须是 \(screenIds.joined(separator: "/")) 或 all，现在是 \(target)") }
-        if type == "text", !screenIds.contains(target) { problems.append("text 动作的 target 必须是 \(screenIds.joined(separator: "/")) 之一，现在是 \(target)") }
-        let key = "\(type):\(target)"
-        if seen.contains(key) { problems.append("\(key) 出现了两次，请合并成一个动作") }
-        seen.insert(key)
-        for index in action["items"].items { if let number = index.number { covered.insert(number) } }
-    }
-    for question in result["questions"].items {
-        for index in question["items"].items { if let number = index.number { covered.insert(number) } }
-    }
-    if itemCount >= 1 {
-        for index in 1...itemCount where !covered.contains(Double(index)) { problems.append("意见\(index) 没有对应的动作或问题") }
-    }
-    return problems
 }
 
 // MARK: - 修改意见：改生图提示词

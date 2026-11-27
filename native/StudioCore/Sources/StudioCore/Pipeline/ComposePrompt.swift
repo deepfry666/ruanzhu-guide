@@ -88,18 +88,9 @@ public func ensureContentDateRule(_ prompt: String, _ state: ProjectState) -> St
     while let from = clean.range(of: start), let to = clean.range(of: end, range: from.upperBound..<clean.endIndex) {
         clean.removeSubrange(from.lowerBound..<to.upperBound)
     }
-    // 兼容本次开发草稿中尚未带标记的规则；品牌禁令后的反馈文字必须保留。
-    let oldMarker = "\n\n统一日期规定（优先于旧规划、示例数据和旧正文）："
-    if let from = clean.range(of: oldMarker), let to = clean.range(of: BRAND_BAN_BLOCK, range: from.upperBound..<clean.endIndex) {
-        clean.removeSubrange(from.lowerBound..<to.lowerBound)
-    }
     // 红线只加在 1.6.0 起新建的项目上：旧项目的提示词不变，不会因此把截图全部重生
     let redLine = (state.request?.policyVersion ?? 0) >= 2 ? "\n" + RED_LINE_IMAGE_RULE : ""
     let rule = start + "\n" + [imageDateRule(state), platformNeutralImageRule(state.request?.softwareName ?? "")].filter { !$0.isEmpty }.joined(separator: "\n") + redLine + "\n" + end
     let withoutBan = clean.replacingAll(BRAND_BAN_BLOCK, with: "").jsTrimmed
     return ensureBrandBan(withoutBan + "\n\n" + rule)
-}
-
-public func ensureContentDateRule(_ prompt: String, _ state: JSON) -> String {
-    ensureContentDateRule(prompt, ProjectState(state))
 }

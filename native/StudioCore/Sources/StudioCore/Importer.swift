@@ -1,6 +1,6 @@
 import Foundation
 
-let IMPORT_SKIP_DIRS: Set<String> = ["node_modules", "docs", "tools", "tmp", "archive", "尺寸兼容测试"]
+let IMPORT_SKIP_DIRS: Set<String> = ["node_modules", "docs", "tools", "tmp", "archive"]
 
 /// 扫描工作区里的历史项目（只读）。分级：
 /// - ready：文案、截图齐全，审查回执和当前截图一致，可以直接编辑

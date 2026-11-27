@@ -55,8 +55,6 @@ extension Pipeline {
         return !pending.isEmpty && pending.allSatisfy { $0 == PipelineStepName.receipt.rawValue || $0 == PipelineStepName.build.rawValue }
     }
 
-    public func onlyLocalStepsRemain(_ state: JSON) -> Bool { onlyLocalStepsRemain(ProjectState(state)) }
-
     public func bundleNeedsContinuation(_ state: ProjectState) -> Bool {
         state.readOnly != true && !isSubmitted(state) && !onlyLocalStepsRemain(state)
             && PIPELINE_STEPS.contains { !stepDoneOrSkipped(state, $0) }
